@@ -69,14 +69,23 @@ def display_message_with_images(container, message_content):
         container: The Streamlit container to write into
         message_content (str): The message text that may contain image URLs
     """
-    # Find all URLs that end with .jpg (case insensitive)
-    jpg_urls = re.findall(r'(https?://\S+\.jpg)', message_content, re.IGNORECASE)
+    # Use a non-greedy pattern to find URLs that end with .jpg
+    # This will correctly parse URLs even in malformed Markdown links
+    jpg_urls = re.findall(r'(https?://[^)\]]*?\.jpg)', message_content, re.IGNORECASE)
+    
+    # Remove duplicates while preserving order
+    unique_urls = []
+    seen = set()
+    for url in jpg_urls:
+        if url not in seen:
+            seen.add(url)
+            unique_urls.append(url)
     
     # If images found, display them at the top
-    if jpg_urls:
+    if unique_urls:
         # Create an expander for images
         with container.expander("Images trouvées", expanded=True):
-            for url in jpg_urls:
+            for url in unique_urls:
                 try:
                     st.image(url)
                     st.caption(url)
@@ -123,12 +132,14 @@ compression_retriever = ContextualCompressionRetriever(
 )
 
 @tool(response_format="content_and_artifact")
-def search_image_archive_tool(query: str, year: str = None, locality: str = None):
+def search_image_archive_tool(query: str,
+                              #year: str = None,
+                              locality: str = None):
     """Retrieve information related to a query."""
     # Prepare filter dictionary - only include non-None values
     filter_dict = {}
-    if year is not None:
-        filter_dict["year"] = year
+    # if year is not None:
+    #     filter_dict["year"] = year
     if locality is not None:
         filter_dict["locality"] = locality
     
@@ -229,7 +240,9 @@ def generate(state: MessagesState):
     * Votre réponse doit se baser **uniquement** sur les informations (liens, descriptions) retournées par l'outil `search_image_archive_tool`.
     * N'inventez pas d'informations, de liens ou de descriptions.
     * Restez concentré sur la tâche de recherche via l'outil ; évitez les conversations non pertinentes.
-    Tu peux récupérer les liens d'images.
+IMPORTANT : Si vous ne trouvez pas d'images pertinentes, ne vous inquiétez pas. Répondez simplement que vous n'avez trouvé aucune image correspondante dans l'archive numérique. Ne proposez pas d'autres suggestions ou alternatives, sauf si cela est explicitement demandé par l'utilisateur.
+Eviter toujours de retourner des informations qui ne sont pas retournées par l'outil `search_image_archive_tool`.
+    
     """
     )
     conversation_messages = [

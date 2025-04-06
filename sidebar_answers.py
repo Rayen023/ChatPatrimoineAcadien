@@ -645,7 +645,7 @@ def show_questions_sidebar():
                      contains 'question' and 'ground_truth' keys.
                      The 'ground_truth' is a list of image details.
     """
-    with st.sidebar.expander("Afficher/Masquer les Questions et Réponses", expanded=False):
+    with st.sidebar.expander("Questions et Réponses", expanded=False):
         if not data:
             st.write("Aucune donnée de question à afficher.")
             return
@@ -665,7 +665,7 @@ def show_questions_sidebar():
                     - **Contenu:** {gt.get('content', 'N/A')}
                     - **Année:** {gt.get('year', 'N/A')}
                     - **Localité:** {gt.get('locality', 'N/A')}
-                    - **Lien:** [{gt.get('cloud_link', 'N/A')}]({gt.get('cloud_link', '#')})
+                    - **Lien:** [link]({gt.get('cloud_link', '#')})
                     """
                     st.markdown(gt_details, unsafe_allow_html=True)
             st.divider() # Add a visual separator between questions
