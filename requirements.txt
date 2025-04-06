@@ -1,0 +1,6 @@
+langchain-pinecone
+langchain-voyageai
+langchain-google-genai 
+langgraph
+streamlit
+langchain
