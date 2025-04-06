@@ -88,7 +88,7 @@ def display_message_with_images(container, message_content):
             for url in unique_urls:
                 try:
                     st.image(url)
-                    st.caption(url)
+                    #st.caption(url)
                 except Exception:
                     st.warning(f"Impossible de charger l'image: {url}")
     
@@ -303,12 +303,12 @@ if user_message:
                 latest_message = step["messages"][-1]
                 
                 # Check if it's a tool message that should be displayed in the tool call container
-                if latest_message.type == "tool":
-                    with tool_calls_container:
-                        st.write(f"🔍 Searching archives: {latest_message.name}")
+                #if latest_message.type == "tool":
+                    #with tool_calls_container:
+                        #st.write(f"🔍 Searching archives: {latest_message.name}")
                         # Display tool content for debugging
-                        if hasattr(latest_message, 'content'):
-                            st.write("Tool content:", latest_message.content + "..." if len(latest_message.content) > 100 else latest_message.content)
+                        #if hasattr(latest_message, 'content'):
+                            #st.write("Tool content:", latest_message.content + "..." if len(latest_message.content) > 100 else latest_message.content)
                 
                 # If it's an AI message, update the response
                 if latest_message.type == "ai":
@@ -317,10 +317,10 @@ if user_message:
                     display_message_with_images(response_container, final_response)
             
             # Debug the context
-            if "context" in step and step["context"]:
-                with tool_calls_container:
-                    st.write("📄 Retrieved context (first document):", 
-                             step["context"][0].page_content[:100] + "..." if step["context"] and len(step["context"]) > 0 and hasattr(step["context"][0], 'page_content') else "No page_content found")
+            # if "context" in step and step["context"]:
+            #     with tool_calls_container:
+            #         st.write("📄 Retrieved context (first document):", 
+            #                  step["context"][0].page_content[:100] + "..." if step["context"] and len(step["context"]) > 0 and hasattr(step["context"][0], 'page_content') else "No page_content found")
         
         # After streaming completes, add the final message to session state
         if final_response:
