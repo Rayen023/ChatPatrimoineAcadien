@@ -18,17 +18,30 @@ from langchain_core.documents import Document
 from typing_extensions import List, TypedDict
 import re
 from sidebar_answers import show_questions_sidebar
+from langchain_openai import ChatOpenAI
 
 
 WELCOME_MESSAGE = "Comment puis-je vous aider ? | How can I help you ?"
 PINECONE_INDEX_NAME = "short-descriptions"
 
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-pro-exp-03-25",
+# llm = ChatGoogleGenerativeAI(
+#     model="gemini-2.5-pro-exp-03-25",
+#     temperature=0,
+#     max_tokens=None,
+#     timeout=None,
+#     max_retries=2,
+# )
+llm = ChatOpenAI(
+    openai_api_key=st.secrets["OPENROUTER_API_KEY"],
+    openai_api_base=st.secrets["OPENROUTER_BASE_URL"],
+    model_name="openai/o3-mini",
+    #model_name="anthropic/claude-3.7-sonnet",
+    #model_name = "google/gemini-2.0-flash-001",
     temperature=0,
-    max_tokens=None,
+    max_tokens=8096,
     timeout=None,
     max_retries=2,
+    streaming=True,
 )
 
 embeddings = VoyageAIEmbeddings(
@@ -241,6 +254,7 @@ def generate(state: MessagesState):
     * N'inventez pas d'informations, de liens ou de descriptions.
     * Restez concentré sur la tâche de recherche via l'outil ; évitez les conversations non pertinentes.
 IMPORTANT : Si vous ne trouvez pas d'images pertinentes, ne vous inquiétez pas. Répondez simplement que vous n'avez trouvé aucune image correspondante dans l'archive numérique. Ne proposez pas d'autres suggestions ou alternatives, sauf si cela est explicitement demandé par l'utilisateur.
+Ne jamais retourner des informations qui ne sont pas retournées par l'outil `search_image_archive_tool`. Informe l'utilisateur que vous n'avez trouvé aucune image correspondante dans l'archive numérique. Ne proposez pas d'autres suggestions ou alternatives.
 Eviter toujours de retourner des informations qui ne sont pas retournées par l'outil `search_image_archive_tool`.
 Filter extra images that are not relevant to the query.
     """
