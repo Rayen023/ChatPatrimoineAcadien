@@ -116,13 +116,13 @@ vector_store = PineconeVectorStore(
 # Set up the base retriever
 base_retriever = vector_store.as_retriever(
     search_type="similarity_score_threshold",
-    search_kwargs={"k": 6, "score_threshold": 0.5},
+    search_kwargs={"k": 12, "score_threshold": 0.5},
 )
 
 # Create the reranker compressor
 compressor = VoyageAIRerank(
     model="rerank-2", 
-    top_k=2
+    top_k=6
 )
 
 # Create the compression retriever once (outside the function)
@@ -242,7 +242,7 @@ def generate(state: MessagesState):
     * Restez concentré sur la tâche de recherche via l'outil ; évitez les conversations non pertinentes.
 IMPORTANT : Si vous ne trouvez pas d'images pertinentes, ne vous inquiétez pas. Répondez simplement que vous n'avez trouvé aucune image correspondante dans l'archive numérique. Ne proposez pas d'autres suggestions ou alternatives, sauf si cela est explicitement demandé par l'utilisateur.
 Eviter toujours de retourner des informations qui ne sont pas retournées par l'outil `search_image_archive_tool`.
-    
+Filter extra images that are not relevant to the query.
     """
     )
     conversation_messages = [
