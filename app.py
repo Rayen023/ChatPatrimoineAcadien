@@ -306,36 +306,38 @@ if user_message:
         response_placeholder = st.empty()
         response_container = st.container()
         
-        # Process the message through the graph
-        final_response = ""
-        for step in graph.stream(
-            {"messages": st.session_state["messages"]},
-            stream_mode="values", 
-            config={"configurable": {"thread_id": st.session_state["thread_id"]}}
-        ):
-            if "messages" in step and step["messages"]:
-                latest_message = step["messages"][-1]
+        # Add spinner to indicate processing
+        with st.spinner("Recherche dans les archives en cours..."):
+            # Process the message through the graph
+            final_response = ""
+            for step in graph.stream(
+                {"messages": st.session_state["messages"]},
+                stream_mode="values", 
+                config={"configurable": {"thread_id": st.session_state["thread_id"]}}
+            ):
+                if "messages" in step and step["messages"]:
+                    latest_message = step["messages"][-1]
+                    
+                    # Check if it's a tool message that should be displayed in the tool call container
+                    #if latest_message.type == "tool":
+                        #with tool_calls_container:
+                            #st.write(f"🔍 Searching archives: {latest_message.name}")
+                            # Display tool content for debugging
+                            #if hasattr(latest_message, 'content'):
+                                #st.write("Tool content:", latest_message.content + "..." if len(latest_message.content) > 100 else latest_message.content)
+                    
+                    # If it's an AI message, update the response
+                    if latest_message.type == "ai":
+                        final_response = latest_message.content
+                        response_placeholder.empty()  # Clear previous content
+                        display_message_with_images(response_container, final_response)
                 
-                # Check if it's a tool message that should be displayed in the tool call container
-                #if latest_message.type == "tool":
-                    #with tool_calls_container:
-                        #st.write(f"🔍 Searching archives: {latest_message.name}")
-                        # Display tool content for debugging
-                        #if hasattr(latest_message, 'content'):
-                            #st.write("Tool content:", latest_message.content + "..." if len(latest_message.content) > 100 else latest_message.content)
-                
-                # If it's an AI message, update the response
-                if latest_message.type == "ai":
-                    final_response = latest_message.content
-                    response_placeholder.empty()  # Clear previous content
-                    display_message_with_images(response_container, final_response)
+                # Debug the context
+                # if "context" in step and step["context"]:
+                #     with tool_calls_container:
+                #         st.write("📄 Retrieved context (first document):", 
+                #                  step["context"][0].page_content[:100] + "..." if step["context"] and len(step["context"]) > 0 and hasattr(step["context"][0], 'page_content') else "No page_content found")
             
-            # Debug the context
-            # if "context" in step and step["context"]:
-            #     with tool_calls_container:
-            #         st.write("📄 Retrieved context (first document):", 
-            #                  step["context"][0].page_content[:100] + "..." if step["context"] and len(step["context"]) > 0 and hasattr(step["context"][0], 'page_content') else "No page_content found")
-        
-        # After streaming completes, add the final message to session state
-        if final_response:
-            st.session_state["messages"].append(AIMessage(content=final_response))
+            # After streaming completes, add the final message to session state
+            if final_response:
+                st.session_state["messages"].append(AIMessage(content=final_response))
