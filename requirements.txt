@@ -5,3 +5,5 @@ langgraph
 streamlit
 langchain
 langchain-openai
+langchain-cohere
+

@@ -19,7 +19,15 @@ from typing_extensions import List, TypedDict
 import re
 from sidebar_answers import show_questions_sidebar
 from langchain_openai import ChatOpenAI
+from langchain_cohere import CohereEmbeddings
 
+embeddings = CohereEmbeddings(model="embed-multilingual-v3.0")
+
+PINECONE_INDEX_NAME = "short-descriptions-cohere"
+#PINECONE_INDEX_NAME = "short-descriptions"
+# embeddings = VoyageAIEmbeddings(
+#     model="voyage-3"
+# )
 # Set page configuration
 st.set_page_config(
     page_title="Images Patrimoniales",
@@ -29,7 +37,6 @@ st.set_page_config(
 )
 
 WELCOME_MESSAGE = "Comment puis-je vous aider ? | How can I help you ?"
-PINECONE_INDEX_NAME = "short-descriptions"
 
 # Define available model options
 MODEL_OPTIONS = {
@@ -54,9 +61,7 @@ llm = ChatOpenAI(
     streaming=False,
 )
 
-embeddings = VoyageAIEmbeddings(
-    model="voyage-3"
-)
+
 
 
 if "thread_id" not in st.session_state:
