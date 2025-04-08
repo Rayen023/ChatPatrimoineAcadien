@@ -24,25 +24,27 @@ from langchain_openai import ChatOpenAI
 WELCOME_MESSAGE = "Comment puis-je vous aider ? | How can I help you ?"
 PINECONE_INDEX_NAME = "short-descriptions"
 
-# llm = ChatGoogleGenerativeAI(
-#     model="gemini-2.5-pro-exp-03-25",
-#     temperature=0,
-#     max_tokens=None,
-#     timeout=None,
-#     max_retries=2,
-# )
+# Define available model options
+MODEL_OPTIONS = {
+    "Gemini 2.5 Pro": "google/gemini-2.5-pro-preview-03-25",
+    "O3 Mini": "openai/o3-mini",
+    "Claude 3.7 Sonnet": "anthropic/claude-3.7-sonnet",
+    "Gemini 2.0 Flash": "google/gemini-2.0-flash-001"
+}
+
+# Initialize model selection in session state if not present
+if "selected_model" not in st.session_state:
+    st.session_state["selected_model"] = "O3 Mini"
+
 llm = ChatOpenAI(
     openai_api_key=st.secrets["OPENROUTER_API_KEY"],
     openai_api_base=st.secrets["OPENROUTER_BASE_URL"],
-    #model_name="openai/o3-mini",
-    model_name = "google/gemini-2.5-pro-preview-03-25",
-    #model_name="anthropic/claude-3.7-sonnet",
-    #model_name = "google/gemini-2.0-flash-001",
+    model_name=MODEL_OPTIONS[st.session_state["selected_model"]],
     temperature=0,
     max_tokens=8096,
     timeout=None,
     max_retries=2,
-    streaming=True,
+    streaming=False,
 )
 
 embeddings = VoyageAIEmbeddings(
@@ -71,6 +73,14 @@ with st.sidebar:
         icon=":material/edit_square:",
         use_container_width=True,
     )
+    
+    # Add model selection dropdown
+    st.selectbox(
+        "Sélectionner un modèle",
+        options=list(MODEL_OPTIONS.keys()),
+        key="selected_model",
+    )
+    
     show_questions_sidebar()
     
 
@@ -88,12 +98,8 @@ def display_message_with_images(container, message_content):
     jpg_urls = re.findall(r'(https?://[^)\]]*?\.jpg)', message_content, re.IGNORECASE)
     
     # Remove duplicates while preserving order
-    unique_urls = []
     seen = set()
-    for url in jpg_urls:
-        if url not in seen:
-            seen.add(url)
-            unique_urls.append(url)
+    unique_urls = [url for url in jpg_urls if not (url in seen or seen.add(url))]
     
     # If images found, display them at the top
     if unique_urls:
@@ -148,22 +154,23 @@ compression_retriever = ContextualCompressionRetriever(
 @tool(response_format="content_and_artifact")
 def search_image_archive_tool(query: str,
                               #year: str = None,
-                              locality: str = None):
+                              #locality: str = None
+                              ):
     """Retrieve information related to a query."""
     # Prepare filter dictionary - only include non-None values
-    filter_dict = {}
-    # if year is not None:
-    #     filter_dict["year"] = year
-    if locality is not None:
-        filter_dict["locality"] = locality
+    # filter_dict = {}
+    # # if year is not None:
+    # #     filter_dict["year"] = year
+    # # if locality is not None:
+    # #     filter_dict["locality"] = locality
     
-    # Use filter only if we have filter criteria
-    if filter_dict:
-        retrieved_docs = compression_retriever.invoke(query, filter=filter_dict)
-        print(f"Filter applied: {filter_dict}")
-    else:
-        retrieved_docs = compression_retriever.invoke(query)
-        print("No filter applied")
+    # # Use filter only if we have filter criteria
+    # if filter_dict:
+    #     retrieved_docs = compression_retriever.invoke(query, filter=filter_dict)
+    #     print(f"Filter applied: {filter_dict}")
+    #else:
+    retrieved_docs = compression_retriever.invoke(query)
+    print("No filter applied")
     
     # Serialize the results for display
     serialized = "\n\n".join(
