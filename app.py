@@ -20,6 +20,13 @@ import re
 from sidebar_answers import show_questions_sidebar
 from langchain_openai import ChatOpenAI
 
+# Set page configuration
+st.set_page_config(
+    page_title="Images Patrimoniales",
+    page_icon="🏛️",
+    layout="wide",
+    initial_sidebar_state="auto"
+)
 
 WELCOME_MESSAGE = "Comment puis-je vous aider ? | How can I help you ?"
 PINECONE_INDEX_NAME = "short-descriptions"
