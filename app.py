@@ -40,15 +40,17 @@ WELCOME_MESSAGE = "Comment puis-je vous aider ? | How can I help you ?"
 
 # Define available model options
 MODEL_OPTIONS = {
+    "GPT-4.1" : "openai/gpt-4.1",
     "Gemini 2.5 Pro": "google/gemini-2.5-pro-preview-03-25",
     "O3 Mini": "openai/o3-mini",
     "Claude 3.7 Sonnet": "anthropic/claude-3.7-sonnet",
-    "Gemini 2.0 Flash": "google/gemini-2.0-flash-001"
+    "Gemini 2.0 Flash": "google/gemini-2.0-flash-001",
+    
 }
 
 # Initialize model selection in session state if not present
 if "selected_model" not in st.session_state:
-    st.session_state["selected_model"] = "O3 Mini"
+    st.session_state["selected_model"] = "GPT-4.1"
 
 llm = ChatOpenAI(
     openai_api_key=st.secrets["OPENROUTER_API_KEY"],
@@ -120,7 +122,7 @@ def display_message_with_images(container, message_content):
             for url in unique_urls:
                 try:
                     st.image(url)
-                    #st.caption(url)
+                    st.caption(url)
                 except Exception:
                     st.warning(f"Impossible de charger l'image: {url}")
     
