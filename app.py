@@ -1,30 +1,31 @@
+import json
+import os
+import re
+import uuid
+
 import streamlit as st
-from langchain_voyageai import VoyageAIEmbeddings
+from langchain_cohere import CohereEmbeddings
+from langchain_core.documents import Document
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.tools import tool
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from langchain_pinecone import PineconeVectorStore
-from langchain_core.messages import HumanMessage
+from langchain_voyageai import VoyageAIEmbeddings
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import END, START, MessagesState, StateGraph
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode, tools_condition
 from PIL import Image
 from pydantic import BaseModel
-from langchain_google_genai import ChatGoogleGenerativeAI
-import uuid
-from langgraph.checkpoint.memory import MemorySaver
-from langgraph.graph.message import add_messages
-from langgraph.graph import END, START, MessagesState, StateGraph
-from langchain_core.tools import tool
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
-from langchain_core.messages import SystemMessage
-from langgraph.graph import END, MessagesState, StateGraph
-from langgraph.prebuilt import ToolNode, tools_condition
-from langchain_core.documents import Document
 from typing_extensions import List, TypedDict
-import re
+
 from sidebar_answers import show_questions_sidebar
-from langchain_openai import ChatOpenAI
-from langchain_cohere import CohereEmbeddings
 
 embeddings = CohereEmbeddings(model="embed-multilingual-v3.0")
 
 PINECONE_INDEX_NAME = "short-descriptions-cohere"
-#PINECONE_INDEX_NAME = "short-descriptions"
+# PINECONE_INDEX_NAME = "short-descriptions"
 # embeddings = VoyageAIEmbeddings(
 #     model="voyage-3"
 # )
@@ -33,19 +34,18 @@ st.set_page_config(
     page_title="Images Patrimoniales",
     page_icon="🏛️",
     layout="wide",
-    initial_sidebar_state="auto"
+    initial_sidebar_state="auto",
 )
 
 WELCOME_MESSAGE = "Comment puis-je vous aider ? | How can I help you ?"
 
 # Define available model options
 MODEL_OPTIONS = {
-    "GPT-4.1" : "openai/gpt-4.1",
+    "GPT-4.1": "openai/gpt-4.1",
     "Gemini 2.5 Pro": "google/gemini-2.5-pro-preview-03-25",
     "O3 Mini": "openai/o3-mini",
     "Claude 3.7 Sonnet": "anthropic/claude-3.7-sonnet",
     "Gemini 2.0 Flash": "google/gemini-2.0-flash-001",
-    
 }
 
 # Initialize model selection in session state if not present
@@ -64,21 +64,22 @@ llm = ChatOpenAI(
 )
 
 
-
-
 if "thread_id" not in st.session_state:
     st.session_state["thread_id"] = str(uuid.uuid4())
 # Initialize messages if not in session state
 if "messages" not in st.session_state:
     st.session_state["messages"] = [AIMessage(content=WELCOME_MESSAGE)]
 
+
 @st.cache_resource
 def cache_memory():
     return MemorySaver()
 
+
 def reset_chat_history():
     st.session_state["messages"] = [AIMessage(content=WELCOME_MESSAGE)]
     st.session_state["thread_id"] = str(uuid.uuid4())
+
 
 with st.sidebar:
     st.button(
@@ -87,47 +88,95 @@ with st.sidebar:
         icon=":material/edit_square:",
         use_container_width=True,
     )
-    
+
     # Add model selection dropdown
     st.selectbox(
         "Sélectionner un modèle",
         options=list(MODEL_OPTIONS.keys()),
         key="selected_model",
     )
-    
+
     show_questions_sidebar()
-    
+
+
+@st.cache_data
+def load_metadata():
+    """Load metadata from JSON file and return a dictionary mapping cloud_link to item data."""
+    json_path = os.path.join(
+        os.path.dirname(__file__), "items_with_short_descriptions.json"
+    )
+
+    metadata_dict = {}
+    if os.path.exists(json_path):
+        try:
+            with open(json_path, "r", encoding="utf-8") as file:
+                items_data = json.load(file)
+                for item in items_data:
+                    if "cloud_link" in item:
+                        metadata_dict[item["cloud_link"]] = item
+        except Exception as e:
+            print(f"Error loading metadata file: {e}")
+
+    return metadata_dict
+
 
 # New function to display images at the top of a message
 def display_message_with_images(container, message_content):
     """
     Displays any JPG images at the top of the message, then shows the original content.
-    
+
     Args:
         container: The Streamlit container to write into
         message_content (str): The message text that may contain image URLs
     """
+    # Load metadata using the cached function
+
     # Use a non-greedy pattern to find URLs that end with .jpg
     # This will correctly parse URLs even in malformed Markdown links
-    jpg_urls = re.findall(r'(https?://[^)\]]*?\.jpg)', message_content, re.IGNORECASE)
-    
+    jpg_urls = re.findall(r"(https?://[^)\]]*?\.jpg)", message_content, re.IGNORECASE)
+
     # Remove duplicates while preserving order
     seen = set()
     unique_urls = [url for url in jpg_urls if not (url in seen or seen.add(url))]
-    
+
     # If images found, display them at the top
+    import time
+
+    start = time.time()
+
     if unique_urls:
         # Create an expander for images
+        metadata_dict = load_metadata()
+        figure_counter = 1  # Initialize figure counter
         with container.expander("Images trouvées", expanded=True):
             for url in unique_urls:
                 try:
                     st.image(url)
-                    st.caption(url)
+                    # st.caption(url)
+
+                    # Look up metadata for this URL
+                    if url in metadata_dict:
+                        item = metadata_dict[url]
+                        # Extract and display relevant metadata
+                        item_id = item.get("ID", "N/A")
+                        year = item.get("year", "N/A")
+                        content = item.get("content", "N/A")
+                        locality = item.get("locality", "N/A")
+                        # description = item.get("description", "N/A")
+
+                        # Display metadata as caption with Figure number
+                        st.caption(
+                            f"Figure {figure_counter}: {content} ({year}) - {locality}. ID: {item_id}"
+                        )
+                        figure_counter += 1  # Increment figure counter
                 except Exception:
                     st.warning(f"Impossible de charger l'image: {url}")
-    
+    end = time.time()
+    print(f"Image loading time: {end - start:.2f} seconds")
+
     # Display the original message content unchanged
     container.markdown(message_content)
+
 
 # Update message history display
 for message in st.session_state["messages"]:
@@ -142,7 +191,7 @@ from langchain_voyageai import VoyageAIRerank
 
 # Create the base vector store
 vector_store = PineconeVectorStore(
-    #pinecone_api_key=PINECONE_API_KEY,
+    # pinecone_api_key=PINECONE_API_KEY,
     index_name=PINECONE_INDEX_NAME,
     embedding=embeddings,
 )
@@ -154,22 +203,20 @@ base_retriever = vector_store.as_retriever(
 )
 
 # Create the reranker compressor
-compressor = VoyageAIRerank(
-    model="rerank-2", 
-    top_k=6
-)
+compressor = VoyageAIRerank(model="rerank-2", top_k=6)
 
 # Create the compression retriever once (outside the function)
 compression_retriever = ContextualCompressionRetriever(
-    base_compressor=compressor, 
-    base_retriever=base_retriever
+    base_compressor=compressor, base_retriever=base_retriever
 )
 
+
 @tool(response_format="content_and_artifact")
-def search_image_archive_tool(query: str,
-                              #year: str = None,
-                              #locality: str = None
-                              ):
+def search_image_archive_tool(
+    query: str,
+    # year: str = None,
+    # locality: str = None
+):
     """Retrieve information related to a query."""
     # Prepare filter dictionary - only include non-None values
     # filter_dict = {}
@@ -177,15 +224,15 @@ def search_image_archive_tool(query: str,
     # #     filter_dict["year"] = year
     # # if locality is not None:
     # #     filter_dict["locality"] = locality
-    
+
     # # Use filter only if we have filter criteria
     # if filter_dict:
     #     retrieved_docs = compression_retriever.invoke(query, filter=filter_dict)
     #     print(f"Filter applied: {filter_dict}")
-    #else:
+    # else:
     retrieved_docs = compression_retriever.invoke(query)
     print("No filter applied")
-    
+
     # Serialize the results for display
     serialized = "\n\n".join(
         (f"Source: {doc.metadata}\n" f"Content: {doc.page_content}")
@@ -223,25 +270,25 @@ def generate(state: MessagesState):
         else:
             break
     tool_messages = recent_tool_messages[::-1]
-    
+
     # Format into prompt - properly extract content from tool messages
     docs_content = ""
     for msg in tool_messages:
-        if hasattr(msg, 'content') and msg.content:
+        if hasattr(msg, "content") and msg.content:
             docs_content += f"\n\nTool Result: {msg.content}"
-    
+
     # If no content was found in the standard way, try to access tool output differently
     if not docs_content and tool_messages:
         for msg in tool_messages:
             # Try different ways to access the content
-            if hasattr(msg, 'content') and msg.content:
+            if hasattr(msg, "content") and msg.content:
                 docs_content += f"\n\nTool Result: {msg.content}"
-            elif hasattr(msg, 'result') and msg.result:
+            elif hasattr(msg, "result") and msg.result:
                 docs_content += f"\n\nTool Result: {msg.result}"
             # Access function_call result if available
-            elif hasattr(msg, 'function_call') and msg.function_call:
+            elif hasattr(msg, "function_call") and msg.function_call:
                 docs_content += f"\n\nTool Result: {msg.function_call}"
-    
+
     # Add a clear indicator in the prompt to use the retrieved information
     system_message_content = (
         """Vous êtes un agent assistant spécialisé dans la recherche d'images historiques et de leurs descriptions au sein d'une archive numérique dédiée. Vous disposez d'un outil spécifique (`search_image_archive_tool`) pour effectuer ces recherches et accéder aux liens directs et aux métadonnées associées.
@@ -294,9 +341,10 @@ Filter extra images that are not relevant to the query.
     context = []
     for tool_message in tool_messages:
         # Try to access artifact if it exists
-        if hasattr(tool_message, 'artifact'):
+        if hasattr(tool_message, "artifact"):
             context.extend(tool_message.artifact)
     return {"messages": [response], "context": context}
+
 
 graph_builder = StateGraph(MessagesState)
 
@@ -321,45 +369,45 @@ user_message = st.chat_input("Message Patrimoine images...")
 if user_message:
     st.chat_message("user").write(user_message)
     st.session_state["messages"].append(HumanMessage(content=user_message))
-    
+
     with st.chat_message("assistant"):
         # Create a container for tool calls that will persist
         tool_calls_container = st.container(border=True)
         response_placeholder = st.empty()
         response_container = st.container()
-        
+
         # Add spinner to indicate processing
         with st.spinner("Recherche dans les archives en cours..."):
             # Process the message through the graph
             final_response = ""
             for step in graph.stream(
                 {"messages": st.session_state["messages"]},
-                stream_mode="values", 
-                config={"configurable": {"thread_id": st.session_state["thread_id"]}}
+                stream_mode="values",
+                config={"configurable": {"thread_id": st.session_state["thread_id"]}},
             ):
                 if "messages" in step and step["messages"]:
                     latest_message = step["messages"][-1]
-                    
+
                     # Check if it's a tool message that should be displayed in the tool call container
-                    #if latest_message.type == "tool":
-                        #with tool_calls_container:
-                            #st.write(f"🔍 Searching archives: {latest_message.name}")
-                            # Display tool content for debugging
-                            #if hasattr(latest_message, 'content'):
-                                #st.write("Tool content:", latest_message.content + "..." if len(latest_message.content) > 100 else latest_message.content)
-                    
+                    # if latest_message.type == "tool":
+                    # with tool_calls_container:
+                    # st.write(f"🔍 Searching archives: {latest_message.name}")
+                    # Display tool content for debugging
+                    # if hasattr(latest_message, 'content'):
+                    # st.write("Tool content:", latest_message.content + "..." if len(latest_message.content) > 100 else latest_message.content)
+
                     # If it's an AI message, update the response
                     if latest_message.type == "ai":
                         final_response = latest_message.content
                         response_placeholder.empty()  # Clear previous content
                         display_message_with_images(response_container, final_response)
-                
+
                 # Debug the context
                 # if "context" in step and step["context"]:
                 #     with tool_calls_container:
-                #         st.write("📄 Retrieved context (first document):", 
+                #         st.write("📄 Retrieved context (first document):",
                 #                  step["context"][0].page_content[:100] + "..." if step["context"] and len(step["context"]) > 0 and hasattr(step["context"][0], 'page_content') else "No page_content found")
-            
+
             # After streaming completes, add the final message to session state
             if final_response:
                 st.session_state["messages"].append(AIMessage(content=final_response))
