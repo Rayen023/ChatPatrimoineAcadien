@@ -1,47 +1,43 @@
+# Standard library imports
 import json
 import os
 import re
 import uuid
 import asyncio
 import time
+from typing_extensions import List, TypedDict
+
+# Third-party imports
 import streamlit as st
-from langchain_cohere import CohereEmbeddings
+from pydantic import BaseModel
+from PIL import Image
+
+# Langchain imports
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.tools import tool
+from langchain.retrievers import ContextualCompressionRetriever
+
+# Language models and embeddings
+from langchain_cohere import CohereEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
+from langchain_voyageai import VoyageAIEmbeddings, VoyageAIRerank
 from langchain_pinecone import PineconeVectorStore
-from langchain_voyageai import VoyageAIEmbeddings
+
+# Langgraph imports
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
-from PIL import Image
-from pydantic import BaseModel
-from typing_extensions import List, TypedDict
-from langchain.retrievers import ContextualCompressionRetriever
-from langchain_voyageai import VoyageAIRerank
 
+# Local imports
 from sidebar_answers import show_questions_sidebar
 
 embeddings = CohereEmbeddings(model="embed-multilingual-v3.0")
 
 PINECONE_INDEX_NAME = "short-descriptions-cohere"
-# PINECONE_INDEX_NAME = "short-descriptions"
-# embeddings = VoyageAIEmbeddings(
-#     model="voyage-3"
-# )
-# Set page configuration
-st.set_page_config(
-    page_title="Images Patrimoniales",
-    page_icon="🏛️",
-    layout="wide",
-    initial_sidebar_state="auto",
-)
-
 WELCOME_MESSAGE = "Comment puis-je vous aider ? | How can I help you ?"
-
 MODEL_OPTIONS = {
     "GPT-4.1": "openai/gpt-4.1",
     "Gemini 2.5 Pro": "google/gemini-2.5-pro-preview-03-25",
@@ -50,9 +46,47 @@ MODEL_OPTIONS = {
     "Gemini 2.0 Flash": "google/gemini-2.0-flash-001",
 }
 
+# Set page configuration
+st.set_page_config(
+    page_title="Images Patrimoniales",
+    page_icon="🏛️",
+    layout="wide",
+    initial_sidebar_state="auto",
+)
+
+# Initialize embeddings and retrieval system
+embeddings = CohereEmbeddings(model="embed-multilingual-v3.0")
+
+vector_store = PineconeVectorStore(
+    index_name=PINECONE_INDEX_NAME,
+    embedding=embeddings,
+)
+# PINECONE_INDEX_NAME = "short-descriptions"
+# embeddings = VoyageAIEmbeddings(
+#     model="voyage-3"
+# )
+base_retriever = vector_store.as_retriever(
+    search_type="similarity_score_threshold",
+    search_kwargs={"k": 12, "score_threshold": 0.5},
+)
+
+compressor = VoyageAIRerank(model="rerank-2", top_k=6)
+
+compression_retriever = ContextualCompressionRetriever(
+    base_compressor=compressor, base_retriever=base_retriever
+)
+
+# Session state initialization
 if "selected_model" not in st.session_state:
     st.session_state["selected_model"] = "GPT-4.1"
 
+if "thread_id" not in st.session_state:
+    st.session_state["thread_id"] = str(uuid.uuid4())
+
+if "messages" not in st.session_state:
+    st.session_state["messages"] = [AIMessage(content=WELCOME_MESSAGE)]
+
+# LLM initialization
 llm = ChatOpenAI(
     openai_api_key=st.secrets["OPENROUTER_API_KEY"],
     openai_api_base=st.secrets["OPENROUTER_BASE_URL"],
@@ -64,39 +98,13 @@ llm = ChatOpenAI(
     streaming=False,
 )
 
-if "thread_id" not in st.session_state:
-    st.session_state["thread_id"] = str(uuid.uuid4())
-
-if "messages" not in st.session_state:
-    st.session_state["messages"] = [AIMessage(content=WELCOME_MESSAGE)]
-
-
 @st.cache_resource
 def cache_memory():
     return MemorySaver()
 
-
 def reset_chat_history():
     st.session_state["messages"] = [AIMessage(content=WELCOME_MESSAGE)]
     st.session_state["thread_id"] = str(uuid.uuid4())
-
-
-with st.sidebar:
-    st.button(
-        "Nouveau chat",
-        on_click=reset_chat_history,
-        icon=":material/edit_square:",
-        use_container_width=True,
-    )
-
-    st.selectbox(
-        "Sélectionner un modèle",
-        options=list(MODEL_OPTIONS.keys()),
-        key="selected_model",
-    )
-
-    show_questions_sidebar()
-
 
 @st.cache_data
 def load_metadata():
@@ -118,7 +126,7 @@ def load_metadata():
 
     return metadata_dict
 
-
+# UI Components
 @st.fragment
 def display_message_with_images(container, message_content):
     """
@@ -163,7 +171,6 @@ def display_message_with_images(container, message_content):
     end = time.time()
     print(f"Image loading time: {end - start:.2f} seconds")
 
-
 @st.fragment
 def display_chat_history():
     for message in st.session_state["messages"]:
@@ -173,35 +180,35 @@ def display_chat_history():
         elif isinstance(message, HumanMessage):
             st.chat_message("user").write(message.content)
 
+# Sidebar configuration
+with st.sidebar:
+    st.button(
+        "Nouveau chat",
+        on_click=reset_chat_history,
+        icon=":material/edit_square:",
+        use_container_width=True,
+    )
 
+    st.selectbox(
+        "Sélectionner un modèle",
+        options=list(MODEL_OPTIONS.keys()),
+        key="selected_model",
+    )
+
+    show_questions_sidebar()
+
+# Display chat history
 display_chat_history()
 
-
-vector_store = PineconeVectorStore(
-    index_name=PINECONE_INDEX_NAME,
-    embedding=embeddings,
-)
-
-base_retriever = vector_store.as_retriever(
-    search_type="similarity_score_threshold",
-    search_kwargs={"k": 12, "score_threshold": 0.5},
-)
-
-compressor = VoyageAIRerank(model="rerank-2", top_k=6)
-
-compression_retriever = ContextualCompressionRetriever(
-    base_compressor=compressor, base_retriever=base_retriever
-)
-
-
+# Tool definition
 @tool(response_format="content_and_artifact")
 def search_image_archive_tool(
     query: str,
-    # year: str = None,
+# year: str = None,
     # locality: str = None
 ):
-    """Retrieve information related to a query."""
-    # Prepare filter dictionary - only include non-None values
+    """Retrieve information related to a query.# Prepare filter dictionary - only include non-None values"""
+
     # filter_dict = {}
     # # if year is not None:
     # #     filter_dict["year"] = year
@@ -224,18 +231,16 @@ def search_image_archive_tool(
 
     return serialized, retrieved_docs
 
+# Graph components
 class State(MessagesState):
     context: List[Document]
-
 
 def query_or_respond(state: State):
     llm_with_tools = llm.bind_tools([search_image_archive_tool])
     response = llm_with_tools.invoke(state["messages"])
     return {"messages": [response]}
 
-
 tools = ToolNode([search_image_archive_tool])
-
 
 def generate(state: MessagesState):
     recent_tool_messages = []
@@ -313,7 +318,7 @@ Eviter toujours de retourner des informations qui ne sont pas retournées par l'
             context.extend(tool_message.artifact)
     return {"messages": [response], "context": context}
 
-
+# Graph setup
 graph_builder = StateGraph(MessagesState)
 
 graph_builder.add_node(query_or_respond)
@@ -332,34 +337,45 @@ graph_builder.add_edge("generate", END)
 memory = cache_memory()
 graph = graph_builder.compile(checkpointer=memory)
 
-
+# Message processing
 async def process_message(user_message):
     st.chat_message("user").write(user_message)
     st.session_state["messages"].append(HumanMessage(content=user_message))
 
-    with st.chat_message("assistant"):
-        tool_calls_container = st.container(border=True)
-        response_container = st.container()
+    # First, create an empty container outside the chat message context
+    # This ensures complete separation between spinner and final response
+    spinner_container = st.empty()
+    response_container = st.empty()
+    
+    # Use the spinner in its own isolated container
+    with spinner_container:
+        with st.spinner("Recherche dans les archives en cours..."):
+            final_response = ""
+            async for step in graph.astream(
+                {"messages": st.session_state["messages"]},
+                stream_mode="values",
+                config={"configurable": {"thread_id": st.session_state["thread_id"]}},
+            ):
+                if "messages" in step and step["messages"]:
+                    latest_message = step["messages"][-1]
 
-        with response_container:
-            with st.spinner("Recherche dans les archives en cours..."):
-                final_response = ""
-                async for step in graph.astream(
-                    {"messages": st.session_state["messages"]},
-                    stream_mode="values",
-                    config={"configurable": {"thread_id": st.session_state["thread_id"]}},
-                ):
-                    if "messages" in step and step["messages"]:
-                        latest_message = step["messages"][-1]
+                    if latest_message.type == "ai":
+                        final_response = latest_message.content
+    
+    # Completely remove the spinner before showing any response
+    spinner_container.empty()
+    
+    # Now create the assistant message in a completely separate container
+    if final_response:
+        # Add to session state first
+        st.session_state["messages"].append(AIMessage(content=final_response))
+        
+        # Then render in a completely fresh container
+        with response_container.container():
+            with st.chat_message("assistant"):
+                display_message_with_images(st, final_response)
 
-                        if latest_message.type == "ai":
-                            final_response = latest_message.content
-                            display_message_with_images(response_container, final_response)
-
-                if final_response:
-                    st.session_state["messages"].append(AIMessage(content=final_response))
-
-
+# Handle user input
 user_message = st.chat_input("Message Patrimoine images...")
 if user_message:
     asyncio.run(process_message(user_message))
