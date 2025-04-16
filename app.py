@@ -2,7 +2,8 @@ import json
 import os
 import re
 import uuid
-
+import asyncio
+import time
 import streamlit as st
 from langchain_cohere import CohereEmbeddings
 from langchain_core.documents import Document
@@ -19,6 +20,8 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from PIL import Image
 from pydantic import BaseModel
 from typing_extensions import List, TypedDict
+from langchain.retrievers import ContextualCompressionRetriever
+from langchain_voyageai import VoyageAIRerank
 
 from sidebar_answers import show_questions_sidebar
 
@@ -39,7 +42,6 @@ st.set_page_config(
 
 WELCOME_MESSAGE = "Comment puis-je vous aider ? | How can I help you ?"
 
-# Define available model options
 MODEL_OPTIONS = {
     "GPT-4.1": "openai/gpt-4.1",
     "Gemini 2.5 Pro": "google/gemini-2.5-pro-preview-03-25",
@@ -48,7 +50,6 @@ MODEL_OPTIONS = {
     "Gemini 2.0 Flash": "google/gemini-2.0-flash-001",
 }
 
-# Initialize model selection in session state if not present
 if "selected_model" not in st.session_state:
     st.session_state["selected_model"] = "GPT-4.1"
 
@@ -63,10 +64,9 @@ llm = ChatOpenAI(
     streaming=False,
 )
 
-
 if "thread_id" not in st.session_state:
     st.session_state["thread_id"] = str(uuid.uuid4())
-# Initialize messages if not in session state
+
 if "messages" not in st.session_state:
     st.session_state["messages"] = [AIMessage(content=WELCOME_MESSAGE)]
 
@@ -89,7 +89,6 @@ with st.sidebar:
         use_container_width=True,
     )
 
-    # Add model selection dropdown
     st.selectbox(
         "Sélectionner un modèle",
         options=list(MODEL_OPTIONS.keys()),
@@ -120,7 +119,7 @@ def load_metadata():
     return metadata_dict
 
 
-# New function to display images at the top of a message
+@st.fragment
 def display_message_with_images(container, message_content):
     """
     Displays any JPG images at the top of the message, then shows the original content.
@@ -129,83 +128,67 @@ def display_message_with_images(container, message_content):
         container: The Streamlit container to write into
         message_content (str): The message text that may contain image URLs
     """
-    # Load metadata using the cached function
+    
+    start = time.time()
 
-    # Use a non-greedy pattern to find URLs that end with .jpg
-    # This will correctly parse URLs even in malformed Markdown links
     jpg_urls = re.findall(r"(https?://[^)\]]*?\.jpg)", message_content, re.IGNORECASE)
 
-    # Remove duplicates while preserving order
     seen = set()
     unique_urls = [url for url in jpg_urls if not (url in seen or seen.add(url))]
 
-    # If images found, display them at the top
-    import time
+    if not unique_urls:
+        container.markdown(message_content)
+        return
 
-    start = time.time()
+    metadata_dict = load_metadata()
+    figure_counter = 1
 
-    if unique_urls:
-        # Create an expander for images
-        metadata_dict = load_metadata()
-        figure_counter = 1  # Initialize figure counter
-        with container.expander("Images trouvées", expanded=True):
-            for url in unique_urls:
-                try:
-                    st.image(url)
-                    # st.caption(url)
+    for url in unique_urls:
+        try:
+            container.image(url)
+            if url in metadata_dict:
+                item = metadata_dict[url]
+                item_id = item.get("ID", "N/A")
+                year = item.get("year", "N/A")
+                content = item.get("content", "N/A")
+                locality = item.get("locality", "N/A")
+                description = item.get("description", "N/A")
 
-                    # Look up metadata for this URL
-                    if url in metadata_dict:
-                        item = metadata_dict[url]
-                        # Extract and display relevant metadata
-                        item_id = item.get("ID", "N/A")
-                        year = item.get("year", "N/A")
-                        content = item.get("content", "N/A")
-                        locality = item.get("locality", "N/A")
-                        # description = item.get("description", "N/A")
-
-                        # Display metadata as caption with Figure number
-                        st.caption(
-                            f"Figure {figure_counter}: {content} ({year}) - {locality}. ID: {item_id}"
-                        )
-                        figure_counter += 1  # Increment figure counter
-                except Exception:
-                    st.warning(f"Impossible de charger l'image: {url}")
+                container.markdown(f"**Figure {figure_counter}:** [{content} ({year}) - {locality}.]({url}) ")
+                container.markdown(f"{description}")
+                figure_counter += 1
+        except Exception:
+            container.warning(f"Impossible de charger l'image: {url}")
+    
     end = time.time()
     print(f"Image loading time: {end - start:.2f} seconds")
 
-    # Display the original message content unchanged
-    container.markdown(message_content)
+
+@st.fragment
+def display_chat_history():
+    for message in st.session_state["messages"]:
+        if isinstance(message, AIMessage):
+            with st.chat_message("assistant"):
+                display_message_with_images(st, message.content)
+        elif isinstance(message, HumanMessage):
+            st.chat_message("user").write(message.content)
 
 
-# Update message history display
-for message in st.session_state["messages"]:
-    if isinstance(message, AIMessage):
-        with st.chat_message("assistant"):
-            display_message_with_images(st, message.content)
-    elif isinstance(message, HumanMessage):
-        st.chat_message("user").write(message.content)
+display_chat_history()
 
-from langchain.retrievers import ContextualCompressionRetriever
-from langchain_voyageai import VoyageAIRerank
 
-# Create the base vector store
 vector_store = PineconeVectorStore(
-    # pinecone_api_key=PINECONE_API_KEY,
     index_name=PINECONE_INDEX_NAME,
     embedding=embeddings,
 )
 
-# Set up the base retriever
 base_retriever = vector_store.as_retriever(
     search_type="similarity_score_threshold",
     search_kwargs={"k": 12, "score_threshold": 0.5},
 )
 
-# Create the reranker compressor
 compressor = VoyageAIRerank(model="rerank-2", top_k=6)
 
-# Create the compression retriever once (outside the function)
 compression_retriever = ContextualCompressionRetriever(
     base_compressor=compressor, base_retriever=base_retriever
 )
@@ -241,28 +224,20 @@ def search_image_archive_tool(
 
     return serialized, retrieved_docs
 
-
 class State(MessagesState):
     context: List[Document]
 
 
-# Step 1: Generate an AIMessage that may include a tool-call to be sent.
 def query_or_respond(state: State):
-    """Generate tool call for retrieval or respond."""
     llm_with_tools = llm.bind_tools([search_image_archive_tool])
     response = llm_with_tools.invoke(state["messages"])
-    # MessagesState appends messages to state instead of overwriting
     return {"messages": [response]}
 
 
-# Step 2: Execute the retrieval.
 tools = ToolNode([search_image_archive_tool])
 
 
-# Step 3: Generate a response using the retrieved content.
 def generate(state: MessagesState):
-    """Generate answer."""
-    # Get generated ToolMessages
     recent_tool_messages = []
     for message in reversed(state["messages"]):
         if message.type == "tool":
@@ -270,26 +245,21 @@ def generate(state: MessagesState):
         else:
             break
     tool_messages = recent_tool_messages[::-1]
-
     # Format into prompt - properly extract content from tool messages
     docs_content = ""
     for msg in tool_messages:
         if hasattr(msg, "content") and msg.content:
             docs_content += f"\n\nTool Result: {msg.content}"
 
-    # If no content was found in the standard way, try to access tool output differently
     if not docs_content and tool_messages:
         for msg in tool_messages:
-            # Try different ways to access the content
             if hasattr(msg, "content") and msg.content:
                 docs_content += f"\n\nTool Result: {msg.content}"
             elif hasattr(msg, "result") and msg.result:
                 docs_content += f"\n\nTool Result: {msg.result}"
-            # Access function_call result if available
             elif hasattr(msg, "function_call") and msg.function_call:
                 docs_content += f"\n\nTool Result: {msg.function_call}"
 
-    # Add a clear indicator in the prompt to use the retrieved information
     system_message_content = (
         """Vous êtes un agent assistant spécialisé dans la recherche d'images historiques et de leurs descriptions au sein d'une archive numérique dédiée. Vous disposez d'un outil spécifique (`search_image_archive_tool`) pour effectuer ces recherches et accéder aux liens directs et aux métadonnées associées.
 
@@ -325,7 +295,7 @@ def generate(state: MessagesState):
 IMPORTANT : Si vous ne trouvez pas d'images pertinentes, ne vous inquiétez pas. Répondez simplement que vous n'avez trouvé aucune image correspondante dans l'archive numérique. Ne proposez pas d'autres suggestions ou alternatives, sauf si cela est explicitement demandé par l'utilisateur.
 Ne jamais retourner des informations qui ne sont pas retournées par l'outil `search_image_archive_tool`. Informe l'utilisateur que vous n'avez trouvé aucune image correspondante dans l'archive numérique. Ne proposez pas d'autres suggestions ou alternatives.
 Eviter toujours de retourner des informations qui ne sont pas retournées par l'outil `search_image_archive_tool`.
-Filter extra images that are not relevant to the query.
+** Filter extra images that are not relevant to the query.
     """
     )
     conversation_messages = [
@@ -336,11 +306,9 @@ Filter extra images that are not relevant to the query.
     ]
     prompt = [SystemMessage(system_message_content)] + conversation_messages
 
-    # Run
     response = llm.invoke(prompt)
     context = []
     for tool_message in tool_messages:
-        # Try to access artifact if it exists
         if hasattr(tool_message, "artifact"):
             context.extend(tool_message.artifact)
     return {"messages": [response], "context": context}
@@ -365,49 +333,33 @@ memory = cache_memory()
 graph = graph_builder.compile(checkpointer=memory)
 
 
-user_message = st.chat_input("Message Patrimoine images...")
-if user_message:
+async def process_message(user_message):
     st.chat_message("user").write(user_message)
     st.session_state["messages"].append(HumanMessage(content=user_message))
 
     with st.chat_message("assistant"):
-        # Create a container for tool calls that will persist
         tool_calls_container = st.container(border=True)
-        response_placeholder = st.empty()
         response_container = st.container()
 
-        # Add spinner to indicate processing
-        with st.spinner("Recherche dans les archives en cours..."):
-            # Process the message through the graph
-            final_response = ""
-            for step in graph.stream(
-                {"messages": st.session_state["messages"]},
-                stream_mode="values",
-                config={"configurable": {"thread_id": st.session_state["thread_id"]}},
-            ):
-                if "messages" in step and step["messages"]:
-                    latest_message = step["messages"][-1]
+        with response_container:
+            with st.spinner("Recherche dans les archives en cours..."):
+                final_response = ""
+                async for step in graph.astream(
+                    {"messages": st.session_state["messages"]},
+                    stream_mode="values",
+                    config={"configurable": {"thread_id": st.session_state["thread_id"]}},
+                ):
+                    if "messages" in step and step["messages"]:
+                        latest_message = step["messages"][-1]
 
-                    # Check if it's a tool message that should be displayed in the tool call container
-                    # if latest_message.type == "tool":
-                    # with tool_calls_container:
-                    # st.write(f"🔍 Searching archives: {latest_message.name}")
-                    # Display tool content for debugging
-                    # if hasattr(latest_message, 'content'):
-                    # st.write("Tool content:", latest_message.content + "..." if len(latest_message.content) > 100 else latest_message.content)
+                        if latest_message.type == "ai":
+                            final_response = latest_message.content
+                            display_message_with_images(response_container, final_response)
 
-                    # If it's an AI message, update the response
-                    if latest_message.type == "ai":
-                        final_response = latest_message.content
-                        response_placeholder.empty()  # Clear previous content
-                        display_message_with_images(response_container, final_response)
+                if final_response:
+                    st.session_state["messages"].append(AIMessage(content=final_response))
 
-                # Debug the context
-                # if "context" in step and step["context"]:
-                #     with tool_calls_container:
-                #         st.write("📄 Retrieved context (first document):",
-                #                  step["context"][0].page_content[:100] + "..." if step["context"] and len(step["context"]) > 0 and hasattr(step["context"][0], 'page_content') else "No page_content found")
 
-            # After streaming completes, add the final message to session state
-            if final_response:
-                st.session_state["messages"].append(AIMessage(content=final_response))
+user_message = st.chat_input("Message Patrimoine images...")
+if user_message:
+    asyncio.run(process_message(user_message))
