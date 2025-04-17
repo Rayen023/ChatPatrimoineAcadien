@@ -1,35 +1,35 @@
 # Standard library imports
+import asyncio
 import json
 import os
 import re
-import uuid
-import asyncio
 import time
-from typing_extensions import List, TypedDict
+import uuid
 
 # Third-party imports
 import streamlit as st
-from pydantic import BaseModel
-from PIL import Image
+from langchain.retrievers import ContextualCompressionRetriever
+
+# Language models and embeddings
+from langchain_cohere import CohereEmbeddings
 
 # Langchain imports
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.tools import tool
-from langchain.retrievers import ContextualCompressionRetriever
-
-# Language models and embeddings
-from langchain_cohere import CohereEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
-from langchain_voyageai import VoyageAIEmbeddings, VoyageAIRerank
 from langchain_pinecone import PineconeVectorStore
+from langchain_voyageai import VoyageAIEmbeddings, VoyageAIRerank
 
 # Langgraph imports
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
+from PIL import Image
+from pydantic import BaseModel
+from typing_extensions import List, TypedDict
 
 # Local imports
 from sidebar_answers import show_questions_sidebar
@@ -98,13 +98,16 @@ llm = ChatOpenAI(
     streaming=False,
 )
 
+
 @st.cache_resource
 def cache_memory():
     return MemorySaver()
 
+
 def reset_chat_history():
     st.session_state["messages"] = [AIMessage(content=WELCOME_MESSAGE)]
     st.session_state["thread_id"] = str(uuid.uuid4())
+
 
 @st.cache_data
 def load_metadata():
@@ -126,6 +129,7 @@ def load_metadata():
 
     return metadata_dict
 
+
 # UI Components
 @st.fragment
 def display_message_with_images(container, message_content):
@@ -136,7 +140,7 @@ def display_message_with_images(container, message_content):
         container: The Streamlit container to write into
         message_content (str): The message text that may contain image URLs
     """
-    
+
     start = time.time()
 
     jpg_urls = re.findall(r"(https?://[^)\]]*?\.jpg)", message_content, re.IGNORECASE)
@@ -162,14 +166,17 @@ def display_message_with_images(container, message_content):
                 locality = item.get("locality", "N/A")
                 description = item.get("description", "N/A")
 
-                container.markdown(f"**Figure {figure_counter}:** [{content} ({year}) - {locality}.]({url}) ")
+                container.markdown(
+                    f"**Figure {figure_counter}:** [{content} ({year}) - {locality}.]({url}) "
+                )
                 container.markdown(f"{description}")
                 figure_counter += 1
         except Exception:
             container.warning(f"Impossible de charger l'image: {url}")
-    
+
     end = time.time()
     print(f"Image loading time: {end - start:.2f} seconds")
+
 
 @st.fragment
 def display_chat_history():
@@ -179,6 +186,7 @@ def display_chat_history():
                 display_message_with_images(st, message.content)
         elif isinstance(message, HumanMessage):
             st.chat_message("user").write(message.content)
+
 
 # Sidebar configuration
 with st.sidebar:
@@ -200,11 +208,12 @@ with st.sidebar:
 # Display chat history
 display_chat_history()
 
+
 # Tool definition
 @tool(response_format="content_and_artifact")
 def search_image_archive_tool(
     query: str,
-# year: str = None,
+    # year: str = None,
     # locality: str = None
 ):
     """Retrieve information related to a query.# Prepare filter dictionary - only include non-None values"""
@@ -231,16 +240,20 @@ def search_image_archive_tool(
 
     return serialized, retrieved_docs
 
+
 # Graph components
 class State(MessagesState):
     context: List[Document]
+
 
 def query_or_respond(state: State):
     llm_with_tools = llm.bind_tools([search_image_archive_tool])
     response = llm_with_tools.invoke(state["messages"])
     return {"messages": [response]}
 
+
 tools = ToolNode([search_image_archive_tool])
+
 
 def generate(state: MessagesState):
     recent_tool_messages = []
@@ -318,6 +331,7 @@ Eviter toujours de retourner des informations qui ne sont pas retournées par l'
             context.extend(tool_message.artifact)
     return {"messages": [response], "context": context}
 
+
 # Graph setup
 graph_builder = StateGraph(MessagesState)
 
@@ -337,6 +351,7 @@ graph_builder.add_edge("generate", END)
 memory = cache_memory()
 graph = graph_builder.compile(checkpointer=memory)
 
+
 # Message processing
 async def process_message(user_message):
     st.chat_message("user").write(user_message)
@@ -346,10 +361,10 @@ async def process_message(user_message):
     # This ensures complete separation between spinner and final response
     spinner_container = st.empty()
     response_container = st.empty()
-    
+
     # Use the spinner in its own isolated container
     with spinner_container:
-        with st.spinner("Recherche dans les archives en cours..."):
+        with st.spinner("Thinking..."):
             final_response = ""
             async for step in graph.astream(
                 {"messages": st.session_state["messages"]},
@@ -361,19 +376,20 @@ async def process_message(user_message):
 
                     if latest_message.type == "ai":
                         final_response = latest_message.content
-    
+
     # Completely remove the spinner before showing any response
     spinner_container.empty()
-    
+
     # Now create the assistant message in a completely separate container
     if final_response:
         # Add to session state first
         st.session_state["messages"].append(AIMessage(content=final_response))
-        
+
         # Then render in a completely fresh container
         with response_container.container():
             with st.chat_message("assistant"):
                 display_message_with_images(st, final_response)
+
 
 # Handle user input
 user_message = st.chat_input("Message Patrimoine images...")
