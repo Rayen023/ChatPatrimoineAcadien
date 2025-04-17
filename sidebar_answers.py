@@ -1,5 +1,6 @@
-import streamlit as st
 import json
+
+import streamlit as st
 
 # Load the JSON data (ensure the french_json_data variable contains the actual JSON string or load it from a file)
 # For demonstration, the JSON data from the previous step is included as a multiline string.
@@ -635,6 +636,7 @@ french_json_data_string = """
 
 data = json.loads(french_json_data_string)
 
+
 def show_questions_sidebar():
     """
     Displays questions and ground truth data in the Streamlit sidebar,
@@ -668,7 +670,8 @@ def show_questions_sidebar():
                     - **Lien:** [link]({gt.get('cloud_link', '#')})
                     """
                     st.markdown(gt_details, unsafe_allow_html=True)
-            st.divider() # Add a visual separator between questions
+            st.divider()  # Add a visual separator between questions
+
 
 # Example of how to call the function in your Streamlit app:
 # show_questions_sidebar(french_data)
