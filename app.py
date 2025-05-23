@@ -79,7 +79,7 @@ compression_retriever = ContextualCompressionRetriever(
 
 # Session state initialization
 if "selected_model" not in st.session_state:
-    st.session_state["selected_model"] = "GPT-4.1"
+    st.session_state["selected_model"] = "Gemini 2.5 Flash"
 
 if "thread_id" not in st.session_state:
     st.session_state["thread_id"] = str(uuid.uuid4())
@@ -158,7 +158,7 @@ def display_message_with_images(container, message_content):
 
     for url in unique_urls:
         try:
-            container.image(url)
+            container.image(url, width=500)  # Resize images to 400px width
             if url in metadata_dict:
                 item = metadata_dict[url]
                 item_id = item.get("ID", "N/A")
@@ -251,8 +251,32 @@ class State(MessagesState):
 
 
 def query_or_respond(state: State):
+    system_message_content = """ 
+    You are a specialized assistant for searching historical images in a digital archive. Your primary goal is to find relevant images and return their direct links.
+
+**Instructions:**
+
+1. **Search First, Ask Later**: For any user query, immediately use `search_image_archive_tool` with the best interpretation of their request. Don't ask for clarification upfront - try the search first even when the request is general or vague.
+
+2. **Filter and Return Links**: From the search results, identify and return ONLY the direct image links (.jpg URLs) that are truly relevant to the user's query. Be selective - filter out images that don't match the specific request.
+
+3. **Handle No Results**: Only if the search returns no relevant results, then inform the user and ask them to be more specific about what they're looking for.
+
+4. **Response Format**: Simply include the relevant .jpg URLs in your response. The system will automatically display the images and their metadata to the user.
+
+**Key Points:**
+- Always use `search_image_archive_tool` for every query
+- Prioritize action over clarification
+- Filter results to show only relevant images
+- Only ask for clarification if no relevant results are found
+- Base responses ONLY on tool results - never invent links or information
+    """
+    
+    # Create messages with system message first
+    messages = [SystemMessage(content=system_message_content)] + state["messages"]
+    
     llm_with_tools = llm.bind_tools([search_image_archive_tool])
-    response = llm_with_tools.invoke(state["messages"])
+    response = llm_with_tools.invoke(messages)
     return {"messages": [response]}
 
 
@@ -268,68 +292,38 @@ def generate(state: MessagesState):
             break
     tool_messages = recent_tool_messages[::-1]
     
-    # Format into prompt - properly extract content from tool messages
+    # Format tool results for context
     docs_content = ""
     for msg in tool_messages:
         if hasattr(msg, "content") and msg.content:
             docs_content += f"\n\nTool Result: {msg.content}"
 
-    if not docs_content and tool_messages:
-        for msg in tool_messages:
-            if hasattr(msg, "content") and msg.content:
-                docs_content += f"\n\nTool Result: {msg.content}"
-            elif hasattr(msg, "result") and msg.result:
-                docs_content += f"\n\nTool Result: {msg.result}"
-            elif hasattr(msg, "function_call") and msg.function_call:
-                docs_content += f"\n\nTool Result: {msg.function_call}"
+    system_message_content = f"""
+    You are a specialized assistant for searching historical images in a digital archive. 
 
-    system_message_content = (
-        """Vous êtes un agent assistant spécialisé dans la recherche d'images historiques et de leurs descriptions au sein d'une archive numérique dédiée. Vous disposez d'un outil spécifique (`search_image_archive_tool`) pour effectuer ces recherches et accéder aux liens directs et aux métadonnées associées.
+**SEARCH RESULTS - Use these results from the archive to answer the user's query:**
 
-**Votre Mission :** Répondre aux demandes de l'utilisateur en trouvant et en fournissant les liens directs vers les images pertinentes et leurs descriptions, en utilisant **exclusivement** votre outil `search_image_archive_tool`.
+{docs_content}
 
-**IMPORTANT: Voici les résultats de recherche que vous DEVEZ utiliser dans votre réponse. Ces informations proviennent des archives et contiennent des données essentielles pour répondre à la requête de l'utilisateur:**
-"""
-        "\n\n"
-        f"{docs_content}"
-        "\n\n"
-        """
-**Étapes à Suivre Impérativement :**
-
-1.  **Comprendre la Demande :** Analysez précisément la requête de l'utilisateur pour extraire les critères de recherche clés (sujets, mots-clés, noms propres, dates spécifiques ou périodes, lieux géographiques, etc.). Clarifiez si nécessaire, mais privilégiez l'action.
-
-2.  **Exécuter la Recherche :** Utilisez **obligatoirement** et **systématiquement** votre outil `search_image_archive_tool` avec la requête préparée pour chercher dans l'archive. Ne tentez jamais de répondre de mémoire ou sans avoir consulté l'outil pour cette demande spécifique.
-
-3.  **Restituer les Résultats :**
-    * **Succès :** Si l'outil `search_image_archive_tool` trouve des correspondances pertinentes :
-        * Présentez les résultats de manière claire et organisée.
-        * Pour chaque image trouvée, fournissez :
-            * Le **lien direct** vers l'image (URL).
-            * La **description** associée, telle que retournée par l'outil. S'il n'y a pas de description, mentionnez-le ou omettez simplement cette partie pour l'entrée concernée.
-        * S'il y a de nombreux résultats, vous pouvez en présenter une sélection (par exemple, les 3-5 plus pertinents) et mentionner que d'autres existent.
-    * **Échec :** Si l'outil `search_image_archive_tool` ne retourne aucun résultat pertinent ou signale une erreur lors de la recherche :
-        * Informez l'utilisateur poliment et clairement que la recherche dans l'archive via l'outil n'a donné aucun résultat pour les critères spécifiés.
-        * Ne suggérez pas d'autres sources externes à moins d'y être explicitement invité ou si cela fait partie de vos capacités étendues.
-
-4.  **Intégrité et Focalisation :**
-    * Votre réponse doit se baser **uniquement** sur les informations (liens, descriptions) retournées par l'outil `search_image_archive_tool`.
-    * N'inventez pas d'informations, de liens ou de descriptions.
-    * Restez concentré sur la tâche de recherche via l'outil ; évitez les conversations non pertinentes.
-IMPORTANT : Si vous ne trouvez pas d'images pertinentes, ne vous inquiétez pas. Répondez simplement que vous n'avez trouvé aucune image correspondante dans l'archive numérique. Ne proposez pas d'autres suggestions ou alternatives, sauf si cela est explicitement demandé par l'utilisateur.
-Ne jamais retourner des informations qui ne sont pas retournées par l'outil `search_image_archive_tool`. Informez l'utilisateur que vous n'avez trouvé aucune image correspondante dans l'archive numérique. Ne proposez pas d'autres suggestions ou alternatives.
-Évitez toujours de retourner des informations qui ne sont pas retournées par l'outil `search_image_archive_tool`.
-** Filtrez les images supplémentaires qui ne sont pas pertinentes pour la requête.
+**Instructions:**
+- Based on the search results above, provide relevant .jpg URLs that match the user's query
+- Be selective - only include images that truly match the request
+- Simply include the relevant URLs in your response
+- Do not invent or create URLs that weren't in the search results
     """
-    )
+    
     conversation_messages = [
         message
         for message in state["messages"]
-        if message.type in ("human", "system")
-        or (message.type == "ai" and not message.tool_calls)
+        if message.type in ("human", "ai") and not getattr(message, "tool_calls", None)
     ]
-    prompt = [SystemMessage(system_message_content)] + conversation_messages
-
-    response = llm.invoke(prompt)
+    
+    # Create proper message list with system message first
+    messages = [SystemMessage(content=system_message_content)] + conversation_messages
+    
+    print(f"Generate - Messages being sent to LLM: {[msg.type for msg in messages]}")
+    
+    response = llm.invoke(messages)
     context = []
     for tool_message in tool_messages:
         if hasattr(tool_message, "artifact"):
