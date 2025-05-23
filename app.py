@@ -40,10 +40,10 @@ PINECONE_INDEX_NAME = "short-descriptions-cohere"
 WELCOME_MESSAGE = "Comment puis-je vous aider ? | How can I help you ?"
 MODEL_OPTIONS = {
     "GPT-4.1": "openai/gpt-4.1",
-    "Gemini 2.5 Pro": "google/gemini-2.5-pro-preview-03-25",
+    "Gemini 2.5 Pro": "google/gemini-2.5-pro-preview",
     "O3 Mini": "openai/o3-mini",
-    "Claude 3.7 Sonnet": "anthropic/claude-3.7-sonnet",
-    "Gemini 2.0 Flash": "google/gemini-2.0-flash-001",
+    "Claude 4 Sonnet": "anthropic/claude-sonnet-4",
+    "Gemini 2.5 Flash": "google/gemini-2.5-flash-preview-05-20",
 }
 
 # Set page configuration
@@ -61,6 +61,7 @@ vector_store = PineconeVectorStore(
     index_name=PINECONE_INDEX_NAME,
     embedding=embeddings,
 )
+# Commented code for alternate configuration
 # PINECONE_INDEX_NAME = "short-descriptions"
 # embeddings = VoyageAIEmbeddings(
 #     model="voyage-3"
@@ -167,7 +168,7 @@ def display_message_with_images(container, message_content):
                 description = item.get("description", "N/A")
 
                 container.markdown(
-                    f"**Figure {figure_counter}:** [{content} ({year}) - {locality}.]({url}) "
+                    f"**Figure {figure_counter}:** [{content} ({year}) - {locality}]({url}) "
                 )
                 container.markdown(f"{description}")
                 figure_counter += 1
@@ -211,24 +212,27 @@ display_chat_history()
 
 # Tool definition
 @tool(response_format="content_and_artifact")
-def search_image_archive_tool(
-    query: str,
-    # year: str = None,
-    # locality: str = None
-):
-    """Retrieve information related to a query.# Prepare filter dictionary - only include non-None values"""
-
+def search_image_archive_tool(query: str):
+    """
+    Retrieve information related to a query from the image archive.
+    
+    Args:
+        query (str): The search query to find relevant images
+        
+    Returns:
+        Tuple: (serialized results, retrieved documents)
+    """
+    # Previous filter implementation kept as comment for reference
     # filter_dict = {}
-    # # if year is not None:
-    # #     filter_dict["year"] = year
-    # # if locality is not None:
-    # #     filter_dict["locality"] = locality
-
-    # # Use filter only if we have filter criteria
+    # if year is not None:
+    #     filter_dict["year"] = year
+    # if locality is not None:
+    #     filter_dict["locality"] = locality
     # if filter_dict:
     #     retrieved_docs = compression_retriever.invoke(query, filter=filter_dict)
     #     print(f"Filter applied: {filter_dict}")
     # else:
+    
     retrieved_docs = compression_retriever.invoke(query)
     print("No filter applied")
 
@@ -263,6 +267,7 @@ def generate(state: MessagesState):
         else:
             break
     tool_messages = recent_tool_messages[::-1]
+    
     # Format into prompt - properly extract content from tool messages
     docs_content = ""
     for msg in tool_messages:
@@ -311,9 +316,9 @@ def generate(state: MessagesState):
     * N'inventez pas d'informations, de liens ou de descriptions.
     * Restez concentré sur la tâche de recherche via l'outil ; évitez les conversations non pertinentes.
 IMPORTANT : Si vous ne trouvez pas d'images pertinentes, ne vous inquiétez pas. Répondez simplement que vous n'avez trouvé aucune image correspondante dans l'archive numérique. Ne proposez pas d'autres suggestions ou alternatives, sauf si cela est explicitement demandé par l'utilisateur.
-Ne jamais retourner des informations qui ne sont pas retournées par l'outil `search_image_archive_tool`. Informe l'utilisateur que vous n'avez trouvé aucune image correspondante dans l'archive numérique. Ne proposez pas d'autres suggestions ou alternatives.
-Eviter toujours de retourner des informations qui ne sont pas retournées par l'outil `search_image_archive_tool`.
-** Filter extra images that are not relevant to the query.
+Ne jamais retourner des informations qui ne sont pas retournées par l'outil `search_image_archive_tool`. Informez l'utilisateur que vous n'avez trouvé aucune image correspondante dans l'archive numérique. Ne proposez pas d'autres suggestions ou alternatives.
+Évitez toujours de retourner des informations qui ne sont pas retournées par l'outil `search_image_archive_tool`.
+** Filtrez les images supplémentaires qui ne sont pas pertinentes pour la requête.
     """
     )
     conversation_messages = [
