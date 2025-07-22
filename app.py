@@ -10,8 +10,8 @@ import uuid
 import streamlit as st
 from langchain.retrievers import ContextualCompressionRetriever
 
-# Language models and embeddings
-from langchain_cohere import CohereEmbeddings
+## Language models and embeddings
+# from langchain_cohere import CohereEmbeddings
 
 # Langchain imports
 from langchain_core.documents import Document
@@ -34,9 +34,10 @@ from typing_extensions import List, TypedDict
 # Local imports
 from sidebar_answers import show_questions_sidebar
 
-embeddings = CohereEmbeddings(model="embed-multilingual-v3.0")
+## embeddings = CohereEmbeddings(model="embed-multilingual-v3.0")
 
-PINECONE_INDEX_NAME = "short-descriptions-cohere"
+#PINECONE_INDEX_NAME = "short-descriptions-cohere"
+PINECONE_INDEX_NAME = "short-descriptions"
 WELCOME_MESSAGE = "Comment puis-je vous aider ? | How can I help you ?"
 MODEL_OPTIONS = {
     "GPT-4.1": "openai/gpt-4.1",
@@ -54,25 +55,18 @@ st.set_page_config(
     initial_sidebar_state="auto",
 )
 
-# Initialize embeddings and retrieval system
-embeddings = CohereEmbeddings(model="embed-multilingual-v3.0")
-
+## Initialize embeddings and retrieval system
+# embeddings = CohereEmbeddings(model="embed-multilingual-v3.0")
+embeddings = VoyageAIEmbeddings(model="voyage-3")
 vector_store = PineconeVectorStore(
     index_name=PINECONE_INDEX_NAME,
     embedding=embeddings,
 )
-# Commented code for alternate configuration
-# PINECONE_INDEX_NAME = "short-descriptions"
-# embeddings = VoyageAIEmbeddings(
-#     model="voyage-3"
-# )
 base_retriever = vector_store.as_retriever(
     search_type="similarity_score_threshold",
     search_kwargs={"k": 12, "score_threshold": 0.5},
 )
-
 compressor = VoyageAIRerank(model="rerank-2", top_k=6)
-
 compression_retriever = ContextualCompressionRetriever(
     base_compressor=compressor, base_retriever=base_retriever
 )
