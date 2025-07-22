@@ -40,10 +40,10 @@ PINECONE_INDEX_NAME = "short-descriptions-cohere"
 WELCOME_MESSAGE = "Comment puis-je vous aider ? | How can I help you ?"
 MODEL_OPTIONS = {
     "GPT-4.1": "openai/gpt-4.1",
-    "Gemini 2.5 Pro": "google/gemini-2.5-pro-preview",
+    "Gemini 2.5 Pro": "google/gemini-2.5-pro",
     "O3 Mini": "openai/o3-mini",
     "Claude 4 Sonnet": "anthropic/claude-sonnet-4",
-    "Gemini 2.5 Flash": "google/gemini-2.5-flash-preview-05-20",
+    "Gemini 2.5 Flash": "google/gemini-2.5-flash",
 }
 
 # Set page configuration
