@@ -4,7 +4,7 @@
 
 ChatPatrimoine is an LLM-powered conversational agent designed to provide information about historical Acadian archival images. The application helps users interact with Acadian visual history by generating descriptive metadata and contextual information for archive photographs.
 
-Live demo: [https://chatpatrimoine.streamlit.app/](https://chatpatrimoine.streamlit.app/)
+Live demo: [https://chatpatrimoineacadien.ca/](https://chatpatrimoineacadien.ca/)
 
 ## Features
 
