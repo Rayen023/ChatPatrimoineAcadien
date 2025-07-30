@@ -1377,6 +1377,7 @@ dependencies = [
     { name = "langchain-pinecone" },
     { name = "langchain-voyageai" },
     { name = "langgraph" },
+    { name = "python-dotenv" },
     { name = "streamlit" },
 ]
 
@@ -1389,6 +1390,7 @@ requires-dist = [
     { name = "langchain-pinecone", specifier = "==0.2.4" },
     { name = "langchain-voyageai", specifier = "==0.1.4" },
     { name = "langgraph", specifier = "==0.3.25" },
+    { name = "python-dotenv", specifier = ">=1.1.1" },
     { name = "streamlit", specifier = "==1.44.1" },
 ]
 

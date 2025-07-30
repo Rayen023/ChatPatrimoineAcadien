@@ -34,6 +34,9 @@ from typing_extensions import List, TypedDict
 # Local imports
 from sidebar_answers import show_questions_sidebar
 
+from dotenv import load_dotenv
+load_dotenv()
+
 ## embeddings = CohereEmbeddings(model="embed-multilingual-v3.0")
 
 #PINECONE_INDEX_NAME = "short-descriptions-cohere"
@@ -83,8 +86,8 @@ if "messages" not in st.session_state:
 
 # LLM initialization
 llm = ChatOpenAI(
-    openai_api_key=st.secrets["OPENROUTER_API_KEY"],
-    openai_api_base=st.secrets["OPENROUTER_BASE_URL"],
+    openai_api_key=os.environ["OPENROUTER_API_KEY"],
+    openai_api_base=os.environ["OPENROUTER_BASE_URL"],
     model_name=MODEL_OPTIONS[st.session_state["selected_model"]],
     temperature=0,
     max_tokens=8096,
