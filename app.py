@@ -8,7 +8,6 @@ import uuid
 import streamlit as st
 from langchain.retrievers import ContextualCompressionRetriever
 
-## Language models and embeddings
 # from langchain_cohere import CohereEmbeddings
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -39,7 +38,6 @@ MODEL_OPTIONS = {
     "GPT-5": "openai/gpt-5",
 }
 
-# Set page configuration
 st.set_page_config(
     page_title="Images Patrimoniales",
     page_icon="🏛️",
@@ -63,7 +61,6 @@ compression_retriever = ContextualCompressionRetriever(
     base_compressor=compressor, base_retriever=base_retriever
 )
 
-# Session state initialization
 if "selected_model" not in st.session_state:
     st.session_state["selected_model"] = "Claude 4.5 Haiku"
 
@@ -73,7 +70,6 @@ if "thread_id" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state["messages"] = [AIMessage(content=WELCOME_MESSAGE)]
 
-# LLM initialization
 llm = ChatOpenAI(
     openai_api_key=os.environ["OPENROUTER_API_KEY"],
     openai_api_base=os.environ["OPENROUTER_BASE_URL"],
@@ -117,7 +113,6 @@ def load_metadata():
     return metadata_dict
 
 
-# UI Components
 @st.fragment
 def display_message_with_images(container, message_content):
     """
@@ -144,7 +139,7 @@ def display_message_with_images(container, message_content):
 
     for url in unique_urls:
         try:
-            container.image(url, width=500)  # Resize images to 400px width
+            container.image(url, width=500)  # Resize images to 500px width
             if url in metadata_dict:
                 item = metadata_dict[url]
                 item_id = item.get("ID", "N/A")
@@ -175,7 +170,6 @@ def display_chat_history():
             st.chat_message("user").write(message.content)
 
 
-# Sidebar configuration
 with st.sidebar:
     st.button(
         "Nouveau chat",
@@ -192,11 +186,9 @@ with st.sidebar:
 
     show_questions_sidebar()
 
-# Display chat history
 display_chat_history()
 
 
-# Tool definition
 @tool(response_format="content_and_artifact")
 def search_image_archive_tool(query: str):
     """
@@ -231,9 +223,6 @@ def search_image_archive_tool(query: str):
     return serialized, retrieved_docs
 
 
-# Graph components
-
-# Prepare tools
 tools = [search_image_archive_tool]
 tools_by_name = {tool.name: tool for tool in tools}
 llm_with_tools = llm.bind_tools(tools)
@@ -268,7 +257,6 @@ Vous êtes un assistant spécialisé dans la recherche d'images historiques. Vot
 
 
 def tool_node(state: MessagesState):
-    """Exécute l'appel d'outil demandé par le LLM"""
     
     result = []
     for tool_call in state["messages"][-1].tool_calls:
@@ -279,25 +267,18 @@ def tool_node(state: MessagesState):
 
 
 def should_continue(state: MessagesState):
-    """Décide si nous devons continuer la boucle ou arrêter en fonction de si le LLM a fait un appel d'outil"""
-    
     messages = state["messages"]
     last_message = messages[-1]
-    # Si le LLM fait un appel d'outil, alors on exécute l'outil
     if last_message.tool_calls:
         return "tool_node"
-    # Sinon, on arrête (réponse à l'utilisateur)
     return END
 
 
-# Graph setup
 graph_builder = StateGraph(MessagesState)
 
-# Add nodes
 graph_builder.add_node("llm_call", llm_call)
 graph_builder.add_node("tool_node", tool_node)
 
-# Add edges to connect nodes
 graph_builder.add_edge(START, "llm_call")
 graph_builder.add_conditional_edges(
     "llm_call",
@@ -310,17 +291,13 @@ memory = cache_memory()
 graph = graph_builder.compile(checkpointer=memory)
 
 
-# Message processing
 async def process_message(user_message):
     st.chat_message("user").write(user_message)
     st.session_state["messages"].append(HumanMessage(content=user_message))
 
-    # First, create an empty container outside the chat message context
-    # This ensures complete separation between spinner and final response
     spinner_container = st.empty()
     response_container = st.empty()
 
-    # Use the spinner in its own isolated container
     with spinner_container:
         with st.spinner("Thinking..."):
             final_response = ""
@@ -335,15 +312,11 @@ async def process_message(user_message):
                     if latest_message.type == "ai":
                         final_response = latest_message.content
 
-    # Completely remove the spinner before showing any response
     spinner_container.empty()
 
-    # Now create the assistant message in a completely separate container
     if final_response:
-        # Add to session state first
         st.session_state["messages"].append(AIMessage(content=final_response))
 
-        # Then render in a completely fresh container
         with response_container.container():
             with st.chat_message("assistant"):
                 display_message_with_images(st, final_response)
