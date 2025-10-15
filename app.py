@@ -249,6 +249,7 @@ Vous êtes un assistant spécialisé dans la recherche d'images historiques. Vot
 - Si vous voulez montrer des images : mettez UNIQUEMENT les liens .jpg sans texte explicatif (le système affiche automatiquement les métadonnées)
 - Si aucun résultat pertinent : expliquez ce que vous avez cherché et demandez plus de précisions
 - Priorisez toujours montrer des images quand l'utilisateur en demande
+- Si l'outil retourne beaucoup de résultats pertinents, choisissez uniquement les 9-10 plus diversifiés et pertinents pour offrir une vue d'ensemble variée
     """
     
     messages = [SystemMessage(content=system_message_content)] + state["messages"]
