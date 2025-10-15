@@ -324,6 +324,6 @@ async def process_message(user_message):
 
 
 # Handle user input
-user_message = st.chat_input("Message Patrimoine images...")
+user_message = st.chat_input("Message ChatPatrimoineAcadien...")
 if user_message:
     asyncio.run(process_message(user_message))
