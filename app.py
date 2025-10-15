@@ -1,4 +1,3 @@
-# Standard library imports
 import asyncio
 import json
 import os
@@ -6,32 +5,21 @@ import re
 import time
 import uuid
 
-# Third-party imports
 import streamlit as st
 from langchain.retrievers import ContextualCompressionRetriever
 
 ## Language models and embeddings
 # from langchain_cohere import CohereEmbeddings
 
-# Langchain imports
-from langchain_core.documents import Document
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_pinecone import PineconeVectorStore
 from langchain_voyageai import VoyageAIEmbeddings, VoyageAIRerank
 
-# Langgraph imports
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, MessagesState, StateGraph
-from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode, tools_condition
-from PIL import Image
-from pydantic import BaseModel
-from typing_extensions import List, TypedDict
 
-# Local imports
 from sidebar_answers import show_questions_sidebar
 
 from dotenv import load_dotenv
@@ -43,11 +31,12 @@ load_dotenv()
 PINECONE_INDEX_NAME = "short-descriptions"
 WELCOME_MESSAGE = "Comment puis-je vous aider ? | How can I help you ?"
 MODEL_OPTIONS = {
-    "GPT-4.1": "openai/gpt-4.1",
+    "Claude 4.5 Haiku": "anthropic/claude-haiku-4.5",
+    "Gemini 2.5 Flash": "google/gemini-2.5-flash-preview-09-2025",
+    "Claude 4.5 Sonnet": "anthropic/claude-sonnet-4.5",
     "Gemini 2.5 Pro": "google/gemini-2.5-pro",
-    "O3 Mini": "openai/o3-mini",
-    "Claude 4 Sonnet": "anthropic/claude-sonnet-4",
-    "Gemini 2.5 Flash": "google/gemini-2.5-flash",
+    "GPT-5 Mini": "openai/gpt-5-mini",
+    "GPT-5": "openai/gpt-5",
 }
 
 # Set page configuration
@@ -67,16 +56,16 @@ vector_store = PineconeVectorStore(
 )
 base_retriever = vector_store.as_retriever(
     search_type="similarity_score_threshold",
-    search_kwargs={"k": 12, "score_threshold": 0.5},
+    search_kwargs={"k": 50, "score_threshold": 0.4},
 )
-compressor = VoyageAIRerank(model="rerank-2", top_k=6)
+compressor = VoyageAIRerank(model="rerank-2", top_k=25)
 compression_retriever = ContextualCompressionRetriever(
     base_compressor=compressor, base_retriever=base_retriever
 )
 
 # Session state initialization
 if "selected_model" not in st.session_state:
-    st.session_state["selected_model"] = "Gemini 2.5 Flash"
+    st.session_state["selected_model"] = "Claude 4.5 Haiku"
 
 if "thread_id" not in st.session_state:
     st.session_state["thread_id"] = str(uuid.uuid4())
@@ -211,13 +200,13 @@ display_chat_history()
 @tool(response_format="content_and_artifact")
 def search_image_archive_tool(query: str):
     """
-    Retrieve information related to a query from the image archive.
+    Récupère des informations liées à une requête dans l'archive d'images.
     
     Args:
-        query (str): The search query to find relevant images
+        query (str): La requête de recherche pour trouver des images pertinentes
         
     Returns:
-        Tuple: (serialized results, retrieved documents)
+        Tuple: (résultats sérialisés, documents récupérés)
     """
     # Previous filter implementation kept as comment for reference
     # filter_dict = {}
@@ -243,106 +232,79 @@ def search_image_archive_tool(query: str):
 
 
 # Graph components
-class State(MessagesState):
-    context: List[Document]
+
+# Prepare tools
+tools = [search_image_archive_tool]
+tools_by_name = {tool.name: tool for tool in tools}
+llm_with_tools = llm.bind_tools(tools)
 
 
-def query_or_respond(state: State):
+def llm_call(state: MessagesState):
+    """L'agent LLM décide d'appeler un outil ou de répondre directement"""
+    
     system_message_content = """ 
-    You are a specialized assistant for searching historical images in a digital archive. Your primary goal is to find relevant images and return their direct links.
+Vous êtes un assistant spécialisé dans la recherche d'images historiques. Votre rôle est de trouver et retourner des liens d'images pertinentes depuis l'archive.
 
-**Instructions:**
+**UTILISATION DE L'OUTIL:**
+- Pour chaque demande d'images, utilisez `search_image_archive_tool` avec une requête descriptive
+- Si les résultats ne correspondent pas, réessayez avec une formulation différente (plus/moins de détails, mots-clés alternatifs)
+- Vous pouvez appeler l'outil plusieurs fois pour affiner la recherche
 
-1. **Search First, Ask Later**: For any user query, immediately use `search_image_archive_tool` with the best interpretation of their request. Don't ask for clarification upfront - try the search first even when the request is general or vague.
+**RÈGLES CRITIQUES - LIENS:**
+- N'INVENTEZ JAMAIS de liens .jpg - utilisez UNIQUEMENT ceux retournés par l'outil
+- Filtrez les résultats et retournez SEULEMENT les liens vraiment pertinents pour la requête
+- Si vous mentionnez des liens dans votre réponse, l'utilisateur ne verra PAS votre texte, SEULEMENT les images
 
-2. **Filter and Return Links**: From the search results, identify and return ONLY the direct image links (.jpg URLs) that are truly relevant to the user's query. Be selective - filter out images that don't match the specific request.
-
-3. **Handle No Results**: Only if the search returns no relevant results, then inform the user and ask them to be more specific about what they're looking for.
-
-4. **Response Format**: Simply include the relevant .jpg URLs in your response. The system will automatically display the images and their metadata to the user.
-
-**Key Points:**
-- Always use `search_image_archive_tool` for every query
-- Prioritize action over clarification
-- Filter results to show only relevant images
-- Only ask for clarification if no relevant results are found
-- Base responses ONLY on tool results - never invent links or information
+**COMMUNICATION AVEC L'UTILISATEUR:**
+- Si vous voulez parler à l'utilisateur (poser une question, expliquer quelque chose) : NE mettez PAS de liens dans cette réponse
+- Si vous voulez montrer des images : mettez UNIQUEMENT les liens .jpg sans texte explicatif (le système affiche automatiquement les métadonnées)
+- Si aucun résultat pertinent : expliquez ce que vous avez cherché et demandez plus de précisions
+- Priorisez toujours montrer des images quand l'utilisateur en demande
     """
     
-    # Create messages with system message first
     messages = [SystemMessage(content=system_message_content)] + state["messages"]
-    
-    llm_with_tools = llm.bind_tools([search_image_archive_tool])
     response = llm_with_tools.invoke(messages)
     return {"messages": [response]}
 
 
-tools = ToolNode([search_image_archive_tool])
-
-
-def generate(state: MessagesState):
-    recent_tool_messages = []
-    for message in reversed(state["messages"]):
-        if message.type == "tool":
-            recent_tool_messages.append(message)
-        else:
-            break
-    tool_messages = recent_tool_messages[::-1]
+def tool_node(state: MessagesState):
+    """Exécute l'appel d'outil demandé par le LLM"""
     
-    # Format tool results for context
-    docs_content = ""
-    for msg in tool_messages:
-        if hasattr(msg, "content") and msg.content:
-            docs_content += f"\n\nTool Result: {msg.content}"
+    result = []
+    for tool_call in state["messages"][-1].tool_calls:
+        tool = tools_by_name[tool_call["name"]]
+        observation = tool.invoke(tool_call["args"])
+        result.append(ToolMessage(content=observation, tool_call_id=tool_call["id"]))
+    return {"messages": result}
 
-    system_message_content = f"""
-    You are a specialized assistant for searching historical images in a digital archive. 
 
-**SEARCH RESULTS - Use these results from the archive to answer the user's query:**
-
-{docs_content}
-
-**Instructions:**
-- Based on the search results above, provide relevant .jpg URLs that match the user's query
-- Be selective - only include images that truly match the request
-- Simply include the relevant URLs in your response
-- Do not invent or create URLs that weren't in the search results
-    """
+def should_continue(state: MessagesState):
+    """Décide si nous devons continuer la boucle ou arrêter en fonction de si le LLM a fait un appel d'outil"""
     
-    conversation_messages = [
-        message
-        for message in state["messages"]
-        if message.type in ("human", "ai") and not getattr(message, "tool_calls", None)
-    ]
-    
-    # Create proper message list with system message first
-    messages = [SystemMessage(content=system_message_content)] + conversation_messages
-    
-    print(f"Generate - Messages being sent to LLM: {[msg.type for msg in messages]}")
-    
-    response = llm.invoke(messages)
-    context = []
-    for tool_message in tool_messages:
-        if hasattr(tool_message, "artifact"):
-            context.extend(tool_message.artifact)
-    return {"messages": [response], "context": context}
+    messages = state["messages"]
+    last_message = messages[-1]
+    # Si le LLM fait un appel d'outil, alors on exécute l'outil
+    if last_message.tool_calls:
+        return "tool_node"
+    # Sinon, on arrête (réponse à l'utilisateur)
+    return END
 
 
 # Graph setup
 graph_builder = StateGraph(MessagesState)
 
-graph_builder.add_node(query_or_respond)
-graph_builder.add_node(tools)
-graph_builder.add_node(generate)
+# Add nodes
+graph_builder.add_node("llm_call", llm_call)
+graph_builder.add_node("tool_node", tool_node)
 
-graph_builder.set_entry_point("query_or_respond")
+# Add edges to connect nodes
+graph_builder.add_edge(START, "llm_call")
 graph_builder.add_conditional_edges(
-    "query_or_respond",
-    tools_condition,
-    {END: END, "tools": "tools"},
+    "llm_call",
+    should_continue,
+    ["tool_node", END]
 )
-graph_builder.add_edge("tools", "generate")
-graph_builder.add_edge("generate", END)
+graph_builder.add_edge("tool_node", "llm_call")
 
 memory = cache_memory()
 graph = graph_builder.compile(checkpointer=memory)
