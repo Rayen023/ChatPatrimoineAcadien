@@ -54,9 +54,9 @@ vector_store = PineconeVectorStore(
 )
 base_retriever = vector_store.as_retriever(
     search_type="similarity_score_threshold",
-    search_kwargs={"k": 50, "score_threshold": 0.4},
+    search_kwargs={"k": 40, "score_threshold": 0.4},
 )
-compressor = VoyageAIRerank(model="rerank-2", top_k=25)
+compressor = VoyageAIRerank(model="rerank-2", top_k=20)
 compression_retriever = ContextualCompressionRetriever(
     base_compressor=compressor, base_retriever=base_retriever
 )
@@ -115,14 +115,6 @@ def load_metadata():
 
 @st.fragment
 def display_message_with_images(container, message_content):
-    """
-    Displays any JPG images at the top of the message, then shows the original content.
-
-    Args:
-        container: The Streamlit container to write into
-        message_content (str): The message text that may contain image URLs
-    """
-
     start = time.time()
 
     jpg_urls = re.findall(r"(https?://[^)\]]*?\.jpg)", message_content, re.IGNORECASE)
@@ -130,8 +122,18 @@ def display_message_with_images(container, message_content):
     seen = set()
     unique_urls = [url for url in jpg_urls if not (url in seen or seen.add(url))]
 
+    # Remove image URLs from the message content to display only the text
+    cleaned_message = message_content
+    for url in unique_urls:
+        cleaned_message = cleaned_message.replace(url, "")
+    
+    # Clean up any extra whitespace or empty lines
+    cleaned_message = re.sub(r'\n\s*\n', '\n\n', cleaned_message.strip())
+
+    if cleaned_message:
+        container.markdown(cleaned_message)
+
     if not unique_urls:
-        container.markdown(message_content)
         return
 
     metadata_dict = load_metadata()
@@ -139,7 +141,7 @@ def display_message_with_images(container, message_content):
 
     for url in unique_urls:
         try:
-            container.image(url, width=500)  # Resize images to 500px width
+            container.image(url, width=500) 
             if url in metadata_dict:
                 item = metadata_dict[url]
                 item_id = item.get("ID", "N/A")
@@ -232,7 +234,7 @@ def llm_call(state: MessagesState):
     """L'agent LLM décide d'appeler un outil ou de répondre directement"""
     
     system_message_content = """ 
-Vous êtes un assistant spécialisé dans la recherche d'images historiques. Votre rôle est de trouver et retourner des liens d'images pertinentes depuis l'archive.
+Vous êtes un assistant spécialisé dans la recherche d'images historiques. Votre rôle est de trouver et retourner des liens d'images pertinentes depuis l'archive du CEAAC (Centre d'études acadiennes Anselme-Chiasson).
 
 **UTILISATION DE L'OUTIL:**
 - Pour chaque demande d'images, utilisez `search_image_archive_tool` avec une requête descriptive
@@ -242,14 +244,22 @@ Vous êtes un assistant spécialisé dans la recherche d'images historiques. Vot
 **RÈGLES CRITIQUES - LIENS:**
 - N'INVENTEZ JAMAIS de liens .jpg - utilisez UNIQUEMENT ceux retournés par l'outil
 - Filtrez les résultats et retournez SEULEMENT les liens vraiment pertinents pour la requête
-- Si vous mentionnez des liens dans votre réponse, l'utilisateur ne verra PAS votre texte, SEULEMENT les images
 
 **COMMUNICATION AVEC L'UTILISATEUR:**
-- Si vous voulez parler à l'utilisateur (poser une question, expliquer quelque chose) : NE mettez PAS de liens dans cette réponse
-- Si vous voulez montrer des images : mettez UNIQUEMENT les liens .jpg sans texte explicatif (le système affiche automatiquement les métadonnées)
-- Si aucun résultat pertinent : expliquez ce que vous avez cherché et demandez plus de précisions
-- Priorisez toujours montrer des images quand l'utilisateur en demande
+- Incluez les liens .jpg dans votre réponse Après votre message
+- Votre message texte sera affiché EN PREMIER, puis les images avec leurs métadonnées et descriptions seront affichées EN DESSOUS automatiquement, vous n'avez pas besoin de répéter les descriptions vous-même.
+- Format recommandé : écrivez votre message explicatif, puis listez les liens des images pertinentes
+- Si aucun résultat pertinent : expliquez ce que vous avez cherché.
+- **PRIORISATION:** Montrez TOUJOURS des images si elles existent, même si elles ne correspondent pas parfaitement à tous les détails du contexte précédent. Il vaut mieux montrer des images d'années, objets ou lieux proches que de ne rien afficher du tout.
 - Si l'outil retourne beaucoup de résultats pertinents, choisissez uniquement les 9-10 plus diversifiés et pertinents pour offrir une vue d'ensemble variée
+- Soyez flexible : si l'utilisateur pose une question plus générale après une question spécifique, élargissez votre recherche plutôt que de rester fixé sur le contexte précédent
+
+**EXEMPLE DE RÉPONSE:**
+"J'ai trouvé plusieurs images pertinentes dans l'archive qui correspondent à votre recherche :
+
+https://exemple.com/image1.jpg
+https://exemple.com/image2.jpg
+https://exemple.com/image3.jpg"
     """
     
     messages = [SystemMessage(content=system_message_content)] + state["messages"]
