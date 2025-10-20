@@ -179,12 +179,14 @@ with st.sidebar:
         icon=":material/edit_square:",
         use_container_width=True,
     )
-
-    st.selectbox(
-        "Sélectionner un modèle",
-        options=list(MODEL_OPTIONS.keys()),
-        key="selected_model",
+    
+    if os.environ.get("DEBUGGING", None) :
+        st.selectbox(
+            "Sélectionner un modèle",
+            options=list(MODEL_OPTIONS.keys()),
+            key="selected_model",
     )
+    
 
     show_questions_sidebar()
 

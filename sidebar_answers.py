@@ -1,4 +1,5 @@
 import json
+import os
 
 import streamlit as st
 
@@ -647,12 +648,13 @@ def show_questions_sidebar():
                      contains 'question' and 'ground_truth' keys.
                      The 'ground_truth' is a list of image details.
     """
-    with st.sidebar.expander("Questions et Réponses", expanded=False):
+    with st.sidebar.expander("Questions exemples", expanded=False):
         if not data:
             st.write("Aucune donnée de question à afficher.")
             return
 
         for i, item in enumerate(data):
+          if os.environ.get("DEBUGGING", None):
             st.subheader(f"Question {i+1}:")
             st.write(item.get("question", "Question non disponible"))
 
@@ -671,6 +673,9 @@ def show_questions_sidebar():
                     """
                     st.markdown(gt_details, unsafe_allow_html=True)
             st.divider()  # Add a visual separator between questions
+          else : 
+            st.write(item.get("question", "Question non disponible"))
+            
 
 
 # Example of how to call the function in your Streamlit app:
