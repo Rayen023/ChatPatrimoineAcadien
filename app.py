@@ -190,6 +190,14 @@ with st.sidebar:
     
 
     show_questions_sidebar()
+    
+    st.markdown("---")
+    st.markdown(
+        "<div style='text-align: center; color: gray; font-size: 0.8em;'>"
+        "© R. Ghali et S. A. Selouani 2025, Ce projet a été développé dans le cadre d'un partenariat du CFRIA avec le Centre Anselme Chiasson de la bibliothèque Champlain de l'Université de Moncton et Assomption Vie."
+        "</div>",
+        unsafe_allow_html=True
+    )
 
 display_chat_history()
 
