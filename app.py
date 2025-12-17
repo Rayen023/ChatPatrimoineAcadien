@@ -73,7 +73,8 @@ if "messages" not in st.session_state:
 llm = ChatOpenAI(
     openai_api_key=os.environ["OPENROUTER_API_KEY"],
     openai_api_base=os.environ["OPENROUTER_BASE_URL"],
-    model_name=MODEL_OPTIONS[st.session_state["selected_model"]],
+    # model_name=MODEL_OPTIONS[st.session_state["selected_model"]],
+    model_name="google/gemini-3-flash-preview",
     temperature=0,
     max_tokens=8096,
     timeout=None,
