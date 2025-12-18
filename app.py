@@ -6,7 +6,6 @@ import time
 import uuid
 
 import streamlit as st
-from langchain.retrievers import ContextualCompressionRetriever
 
 # from langchain_cohere import CohereEmbeddings
 
@@ -56,10 +55,7 @@ base_retriever = vector_store.as_retriever(
     search_type="similarity_score_threshold",
     search_kwargs={"k": 40, "score_threshold": 0.4},
 )
-compressor = VoyageAIRerank(model="rerank-2", top_k=20)
-compression_retriever = ContextualCompressionRetriever(
-    base_compressor=compressor, base_retriever=base_retriever
-)
+reranker = VoyageAIRerank(model="rerank-2", top_k=20)
 
 if "selected_model" not in st.session_state:
     st.session_state["selected_model"] = "Claude 4.5 Haiku"
@@ -80,6 +76,11 @@ llm = ChatOpenAI(
     timeout=None,
     max_retries=2,
     streaming=False,
+    extra_body={
+            "reasoning": {
+                "max_tokens": 8000
+            }
+        },
 )
 
 
@@ -213,19 +214,16 @@ def search_image_archive_tool(query: str):
     Returns:
         Tuple: (résultats sérialisés, documents récupérés)
     """
-    # Previous filter implementation kept as comment for reference
-    # filter_dict = {}
-    # if year is not None:
-    #     filter_dict["year"] = year
-    # if locality is not None:
-    #     filter_dict["locality"] = locality
-    # if filter_dict:
-    #     retrieved_docs = compression_retriever.invoke(query, filter=filter_dict)
-    #     print(f"Filter applied: {filter_dict}")
-    # else:
+    # Step 1: Retrieve documents using the base retriever
+    docs = base_retriever.invoke(query)
     
-    retrieved_docs = compression_retriever.invoke(query)
-    print("No filter applied")
+    # Step 2: Rerank documents using VoyageAI
+    if docs:
+        retrieved_docs = reranker.compress_documents(docs, query)
+    else:
+        retrieved_docs = []
+    
+    print(f"Retrieved {len(docs)} docs, reranked to {len(retrieved_docs)} docs")
 
     # Serialize the results for display
     serialized = "\n\n".join(
