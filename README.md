@@ -5,7 +5,7 @@ Live demo: [https://chatpatrimoineacadien.ca/](https://chatpatrimoineacadien.ca/
 ## Features
 
 - Conversational interface for exploring Acadian historical images
-- LLM-generated descriptions of archival photographs using Gemini 2.5 Flash
+- LLM-generated descriptions of archival photographs
 - Historical context retrieval for images in the collection
 - Example queries in sidebar to guide user interaction
 
