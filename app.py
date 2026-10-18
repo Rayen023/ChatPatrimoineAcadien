@@ -25,11 +25,7 @@ load_dotenv()
 
 PINECONE_INDEX_NAME = "short-descriptions"
 WELCOME_MESSAGE = "Comment puis-je vous aider ? | How can I help you ?"
-MODEL_OPTIONS = {
-    "Gemini 3 Flash": "google/gemini-3-flash-preview",
-    "Claude 4.5 Haiku": "anthropic/claude-haiku-4.5",
-    "Grok 4.1 Fast": "x-ai/grok-4.1-fast",
-}
+MODEL_NAME = "~anthropic/claude-haiku-latest"
 
 st.set_page_config(
     page_title="Images Patrimoniales",
@@ -50,9 +46,6 @@ base_retriever = vector_store.as_retriever(
 )
 reranker = VoyageAIRerank(model="rerank-2", top_k=20)
 
-if "selected_model" not in st.session_state:
-    st.session_state["selected_model"] = "Gemini 3 Flash"
-
 if "thread_id" not in st.session_state:
     st.session_state["thread_id"] = str(uuid.uuid4())
 
@@ -62,7 +55,7 @@ if "messages" not in st.session_state:
 llm = ChatOpenAI(
     openai_api_key=os.environ["OPENROUTER_API_KEY"],
     openai_api_base=os.environ["OPENROUTER_BASE_URL"],
-    model_name=MODEL_OPTIONS[st.session_state["selected_model"]],
+    model_name=MODEL_NAME,
     temperature=0,
     max_tokens=8096,
     timeout=None,
@@ -169,14 +162,6 @@ with st.sidebar:
         use_container_width=True,
     )
     
-    if os.environ.get("DEBUGGING", None) :
-        st.selectbox(
-            "Sélectionner un modèle",
-            options=list(MODEL_OPTIONS.keys()),
-            key="selected_model",
-    )
-    
-
     show_questions_sidebar()
     
     st.markdown("---")
